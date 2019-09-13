@@ -1,0 +1,194 @@
+********************************** extract **********************************
+
+EC3_PSD1
+uxd34
+OGG-02028  Failed to attach to logmining server OGG$EC3_PSD1 error 26908 - ORA-26908: XStream API must be executed using a dedicated server process.
+
+EDSRD1
+uxd33
+OGG-08221  Cannot register or unregister EXTRACT EDSRD1 because of the following SQL error: OCI Error 4021.
+
+OGG-02022  Logmining server does not exist on this Oracle database.
+dblogin userid ggs@dsrd
+REGISTER EXTRACT EDSRD1 DATABASE
+
+delete extract EDSRD1
+obey dirprm/ADD_TRANDATA_dsrd.oby
+DBLOGIN USERID GGS@dsrd
+add extract EDSRD1, integrated tranlog, begin now
+add exttrail /nomove/app/oracle/ggate/12c/1/dirdat/dsrd/ea, extract EDSRD1, megabytes 1000
+# add extract PDSRD1, exttrailsource /nomove/app/oracle/ggate/12c/1/dirdat/dsrd/ea
+# add rmttrail /app/oracle/product/ggate/12c/1/dirdat/dsrd/ra, extract PDSRD1, megabytes 2000
+
+register extract EDSRD1 database
+start extract EDSRD1
+
+
+
+ETRMPD1
+uxd33
+OGG-02042  OCI Error 23605.
+Doc ID 2226423.1
+Downstream Integrated Extract Failing With OGG-08221 Cannot Register Or Unregister EXTRACT Because Of The Following SQL Error: OCI Error 23,605
+
+
+********************************** push **********************************
+
+PCI_DSD1
+OGG-01031  There is a problem in network communication, a remote file problem, encryption keys for target and source do not mah (if using ENCRYPT) or an unknown error. (Reply received is Failed resolving output file /app/oracle/product/ggate/11g/1/dirdat/cigfdsd/ra000000 (error: 2No such file or directory)).
+
+********************************** replicat **********************************
+
+RAP_86D1
+OGG-01296  Error mapping from DEV_BIPLATFORM.SDTOPOLOGY to APP4086D.DEV_BIPLATFORM.SDTOPOLOGY.
+Doc ID 2017835.1 - not the problem
+Doc ID 1329189.1
+dblogin userid ggsuser password ****
+add trandata xxxx.yyyy
+
+RBL_DSD1
+OGG-01154  SQL error 6550 mapping CORE_EXT.AUDIT_LOG_SEQ to BLCFDSD.CORE_EXT.AUDIT_LOG_SEQ.
+OGG-01296  Error mapping from CORE_EXT.AUDIT_LOG_SEQ to BLCFDSD.CORE_EXT.AUDIT_LOG_SEQ.
+
+RBL_WSD1
+OGG-00199  Table BLCDWSD.ENT_DWPERSIST.AGT_AUDIT_LOG_HDR does not exist in target database.
+
+ROSCRD1
+OGG-01296  Error mapping from SLSFR.SEQ_USER_INACTIVE_ORDER to OSCRD.SLSFR.SEQ_USER_INACTIVE_ORDER.
+
+RINFDQD1
+OGG-01296  Error mapping from INF_DQMREP.DLM_LOCKS to INFDQD.INF_DQMREP.DLM_LOCKS.
+
+RINFPCD1
+OGG-01296  Error mapping from INFPC_IV9_JASPER.HIBERNATE_SEQUENCE to INFPCD.INFPC_IV9_JASPER.HIBERNATE_SEQUENCE.
+
+RAC_ALD1
+OGG-01296  Error mapping from HLTH_RFMS.LINE_ID_SEQ to ACTVALD.HLTH_RFMS.LINE_ID_SEQ.
+
+
+
+
+rman target / catalog rman@rman11d
+restore archivelog from sequence 207794
+
+
+#######################
+# reverse replication #
+#######################
+
+********************************** extract **********************************
+
+********************************** push **********************************
+
+********************************** replicat **********************************
+
+RINFDMD1
+OGG-02544  Unhandled error (ORA-26787: The row with key ("DOMAIN_NAME", "ELECTION_STATUS", "HOST_NAME", "LAST_REFRESH_TIME", "NO
+DE_NAME", "PORTNUM") = (DQDOMAIN_DEVELOPMENT961, Election Complete, lxinfdqd02, 1491061964688, node01_lxinfdqd02, 6006) does not exist in table INF_DQDM.ISP_
+MASTER_ELECTION
+OGG-01296  Error mapping from INFDMD.INF_DQDM.ISP_MASTER_ELECTION to INF_DQDM.ISP_MASTER_ELECTION.
+
+
+
+
+
+RCN_ARD1
+SETENV (ORACLE_HOME = "/app/oracle/product/db/11g/1")
+SETENV (NLS_LAG = "AMERICAN_AMERICA.US7ASCII")
+
+DBLOGIN USERID ggs@cnofard PASSWORD M00nl1ght
+delete replicat RCN_ARD1
+add replicat RCN_ARD1, INTEGRATED , exttrail /app/oracle/product/ggate/11g/1/dirdat/cnofard/RR/ra
+start replicat RCN_ARD1
+
+REPLICAT    STOPPED     RDSGD1      00:00:00      02:37:40
+
+REPLICAT    STOPPED     RINFDMD1    AL32UTF8
+SETENV (ORACLE_HOME = "/app/oracle/product/db/11g/1")
+SETENV (NLS_LAG = "AMERICAN_AMERICA.AL32UTF8")
+
+DBLOGIN USERID ggs@infdmd PASSWORD M00nl1ght
+delete replicat RINFDMD1
+add replicat RINFDMD1, INTEGRATED , exttrail /app/oracle/product/ggate/11g/1/dirdat/infdmd/RR/ra
+start replicat RINFDMD1
+
+
+REPLICAT    STOPPED     RIN_DMD1    AL32UTF8
+SETENV (ORACLE_HOME = "/app/oracle/product/db/11g/1")
+SETENV (NLS_LAG = "AMERICAN_AMERICA.AL32UTF8")
+
+DBLOGIN USERID ggs@infmdmd PASSWORD M00nl1ght
+delete replicat RIN_DMD1
+add replicat RIN_DMD1, INTEGRATED , exttrail /app/oracle/product/ggate/11g/1/dirdat/infmdmd/RR/ra
+start replicat RIN_DMD1
+
+
+REPLICAT    STOPPED     RPO_D621    
+
+
+REPLICAT    STOPPED     RTDMD1      AL32UTF8
+SETENV (ORACLE_HOME = "/app/oracle/product/db/11g/1")
+SETENV (NLS_LAG = "AMERICAN_AMERICA.AL32UTF8")
+
+DBLOGIN USERID ggs@tdmd PASSWORD M00nl1ght
+delete replicat RTDMD1
+add replicat RTDMD1, INTEGRATED , exttrail /app/oracle/product/ggate/11g/1/dirdat/tdmd/RR/ra
+start replicat RTDMD1
+
+
+REPLICAT    STOPPED     RWS_DSD1    AL32UTF8
+SETENV (ORACLE_HOME = "/app/oracle/product/db/11g/1")
+SETENV (NLS_LAG = "AMERICAN_AMERICA.AL32UTF8")
+
+DBLOGIN USERID ggs@wstodsd PASSWORD M00nl1ght
+delete replicat RWS_DSD1
+add replicat RWS_DSD1, INTEGRATED , exttrail /app/oracle/product/ggate/11g/1/dirdat/wstodsd/RR/ra
+start replicat RWS_DSD1
+
+
+
+select value from nls_database_parameters where parameter='NLS_CHARACTERSET';
+
+cd /app/oracle/product/ggate/11g/1
+chmod -R 777 /app/oracle/product/ggate/11g/1/dirdat
+removed directories under /app/oracle/product/ggate/11g/1/dirdat
+
+ln -s /oraggrep /app/oracle/product/ggate/11g/1/dirdat
+# extract going to /app/oracle/product/ggate/11g/1/dirdat/dsgd/RR/ra000000000
+
+mkdir /app/oracle/product/ggate/11g/1/dirdat/dsgd
+
+
+
+DBLOGIN USERID ggs@dsgd PASSWORD M00nl1ght
+delete replicat RDSGD1
+add replicat RDSGD1, INTEGRATED , exttrail /app/oracle/product/ggate/11g/1/dirdat/dsgd/RR/ra
+--start replicat RDSGD1 afterscn 2914183
+start replicat RDSGD1
+
+OGG-00012  Command line error:invalid startup syntax: AFTERSCN.
+
+chmod -R 777 /oraggrep
+
+SETENV (ORACLE_HOME = "/app/oracle/product/db/11g/1")
+
+
+DBLOGIN USERID ggs@portd62 PASSWORD M00nl1ght
+delete replicat RPO_D621
+add replicat RPO_D621, INTEGRATED , exttrail /app/oracle/product/ggate/11g/1/dirdat/portd62/RR/ra
+start replicat RPO_D621
+
+OGG-00664  OCI Error beginning session (status = 1017-ORA-01017: invalid username/password; logon denied).
+# /app/oracle/tns_admin/tnsnames.ora pointing to linux DB
+OGG-02650  Source wildcard specification ACORD_STAGING.* does not include a catalog name, but the source table name PORTD62.GGTEST.ROW_COUNT_LINUX includes a catalog name.
+MAP portd62.ACORD_STAGING.*, TARGET ACORD_STAGING.*;
+
+
+DBLOGIN USERID ggs@portd62 PASSWORD M00nl1ght
+delete replicat RPO_D621
+add replicat RPO_D621, INTEGRATED , exttrail /app/oracle/product/ggate/11g/1/dirdat/portd62/RR/ra
+start replicat RPO_D621
+
+
+scp /app/oracle/scripts/12cupgrade/GGRR_4_start_replicat_LXOGG.sh LXOGGM01:/app/oracle/scripts/12cupgrade
+scp /app/oracle/scripts/12cupgrade/GG_3_Linux_start_replicat.sh LXOGGM01:/app/oracle/scripts/12cupgrade

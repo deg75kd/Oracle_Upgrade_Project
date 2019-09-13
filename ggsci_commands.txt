@@ -1,0 +1,582 @@
+###########
+# general #
+###########
+
+# binaries location (AIX)
+/backup_uxs33/ggate/12.2
+/nomove/app/oracle/oragg
+
+# binaries location (Linux)
+/oragg/12.2
+/app/oracle/product/oragg/12.2
+
+# login
+dblogin userid GGS password GG#S01
+DBLOGIN USERID GGS@AWDM PASSWORD GG#S01
+
+# get status
+info all
+
+# details of manager (incl. port and PID)
+info mgr
+
+# get info on process
+info PAWDM101 
+
+# repeat last command
+!
+
+
+###############
+# performance #
+###############
+
+*** Detecting a network bottleneck that is affecting Oracle GoldenGate ***
+https://docs.oracle.com/goldengate/1212/gg-winux/GWUAD/wu_performance.htm#BBAGCJIF
+
+1. find extract checkpoints
+INFO EXTRACT group, SHOWCH 10
+-- Look for the Write Checkpoint statistic. This is the place where Extract is writing to the trail.
+-- Run again to verify if seq, RBA and timestamp have increased
+
+SEND REPLICAT group, STATUS
+
+
+*** statistics ***
+
+# check all stats (shows total DDL plus breakdown by table)
+stats extract EBPAM101
+
+# since process started
+stats extract EBPAM101, total
+
+# since last reset
+stats extract EBPAP1, latest
+
+# stats for today
+stats extract EBPAM101, daily
+
+# reset stats
+stats extract EBPAM101, reset
+
+# specific table
+stats extract PAWDM101, table ggtest.test1
+
+# all tables for a schema
+stats extract PAWDM101, table ggtest.*
+
+# summary for specific table
+stats extract PAWDM101, totalsonly ggtest.test1
+
+# summary for schema
+stats extract PAWDM101, totalsonly ggtest.*
+
+# get stats of replicat
+stats replicat RIDWM1
+# get stats of table
+stats replicat RAWDM101 table ggtest.test1
+
+
+
+###############
+# manager     #
+###############
+
+info manager
+
+start manager
+
+status manager
+
+status manager
+
+
+###############
+# source side #
+###############
+
+# add schema-level supplemental logging
+ADD SCHEMATRANDATA BPA_CLAIMS
+
+# delete extract (unregister from DB first)
+delete extract EAWDM101
+
+# add extract
+add extract EAWDM101, integrated tranlog, begin now
+# 
+add extract PAWDM101, exttrailsource /backup_uxs33/ggate/12.2/dirdat/awdm/ea
+
+# add extract trail
+add exttrail /backup_uxs33/ggate/12.2/dirdat/awdm/ea, extract EAWDM101, megabytes 1000
+
+# start extract
+start PAWDM101
+
+# gracefully stop extract
+stop extract group_name
+
+# forcibly stop extract
+SEND EXTRACT ECN_DWT1, FORCESTOP
+KILL EXTRACT ECN_DWT1
+
+# add remote trail
+add rmttrail /oragg/12.2/dirdat/awdm/ra, extract PAWDM101, megabytes 2000
+
+# check all stats (shows total DDL plus breakdown by table)
+stats extract EBPAM101
+
+# check total stats (can substitute daily, hourly or latest)
+stats extract EBPAM101 total
+
+# check stats on specific table (after replicat started)
+stats extract PAWDM101 table ggtest.test1
+
+# register/unregister
+UNREGISTER EXTRACT EDSRM1 DATABASE
+register extract EBPAM1 database CONTAINER (bpam)
+
+# get status
+send extract PINFDQD1 status
+
+# show lag (more precise than info)
+lag extract EDSRM1
+send extract EDSRM1, getlag
+
+# show info for transactions running more than 20 min
+send extract ECI_DSP1, showtrans duration 20 MIN
+
+# info
+info EDSRM1, detail
+info EDSRM1, showch
+
+# increment extract to next trail file
+alter extract EINF91D1 etrollover
+
+# set pump to restart at specific location
+alter extract PDSRM1 extseqno 200 extrba 0
+
+# change location of trail files (The change takes effect the next time that Extract starts)
+ALTER EXTTRAIL trail_name, EXTRACT group_name [, MEGABYTES n]
+
+
+
+###############
+# target side #
+###############
+
+# delete replicat
+delete replicat RAWDM101
+
+# add replicat
+add replicat RAWDM101, INTEGRATED , exttrail /oragg/12.2/dirdat/awdm/ra
+
+# start replicat
+start replicat r${PDB_NAME}101 aftercsn $SOURCE_CUURENT_SCN
+
+# get status
+status replicat RIDWM1
+
+# get stats of replicat
+stats replicat RIDWM1
+# get stats of table
+stats replicat RAWDM101 table ggtest.test1
+
+# restart process
+start RAWDM101
+
+# unregister replicat
+UNREGISTER REPLICAT group_name DATABASE
+unregister REPLICAT RBPAM1 database CONTAINER (bpam)
+
+# check if replicat at EOF
+send replicat RINFDQD1 status
+
+# check lag
+lag replicat RIDWM1
+
+ALTER REPLICAT finance, EXTSEQNO 53
+ALTER REPLICAT finance, EXTRBA 0
+
+
+
+###############
+# parameters  #
+###############
+
+# view params
+VIEW PARAMS {MGR | group_name | file_name}
+
+# edit params
+EDIT PARAMS {MGR | group_name | file_name}
+
+
+###############
+# report files #
+###############
+
+# view report
+VIEW REPORT group_name[version] 
+
+# view most recent report
+VIEW REPORT MYEXT
+
+# view 2nd most recent report
+VIEW REPORT MYEXT0
+
+/backup_uxs33/ggate/12.2/dirrpt
+
+# EBPAM101.rpt
+
+# see end of file
+tail .. .rpt
+
+
+# checkpoint files
+dirchk
+
+###############
+# logdump     #
+###############
+
+# start
+./logdump
+
+# get this from info command in ggsci or report error
+open <logfile>
+
+# show header of each record
+ghdr on
+
+# move to position in open file
+pos <RBA#>
+
+# move to next record
+n
+
+# scan for header
+sfh
+# scan for previous header
+sfh prev
+
+
+#######################
+# parameter settings  #
+#######################
+
+# exclude table in extract
+TABLEEXCLUDE AHM_GKPR.AHM_ATL_CLM_HISTORY_STAG;
+
+# exclude objects in replicat
+MAPEXCLUDE CCMEOM.PAR_COUPON_TMP
+
+# handle timestamp with timezone in extract
+TRANLOGOPTIONS INCLUDEREGIONID
+
+# allow Replicat to resolve duplicate-record and missing-record errors 
+HANDLECOLLISIONS
+
+# allow Replicat to apply HANDLECOLLISIONS logic after GG has stopped because of a conflict
+RESTARTCOLLISIONS 
+
+# insert missing updates in replicate
+INSERTMISSINGUPDATES
+MAP ..., TARGET ...;
+
+# do not insert missing updates
+NOINSERTMISSINGUPDATES
+MAP ..., TARGET ...;
+
+
+#################################
+# AIX                           #
+# pertinant files & folders     #
+#################################
+
+# GG base directory
+/backup_uxs33/ggate/12.2
+/nomove/app/oracle/oragg
+
+# Manager status file
+/dirout/mgrstatus.out
+
+# Process status file
+/dirout/allstatus.out
+
+# extract param file
+dirprm/enewdb101.prm
+dirprm/e${ORACLE_SID}101.prm
+
+# push param file
+dirprm/pnewdb101.prm 
+dirprm/p${ORACLE_SID}101.prm
+
+# discard file
+dirrpt/e${ORACLE_SID}101.dsc
+
+# include file (not DB specific)
+dirprm/ealldbs_DDL.inc
+
+dirdat/${ORACLE_SID}/ea
+
+# (scripted) adds trans data for schemas
+dirprm/ADD_TRANDATA_${ORACLE_SID}.oby
+
+# (scripted) adds extract
+dirprm/${ORACLE_SID}.oby
+
+
+
+#################################
+# Linux                         #
+# pertinant files & folders     #
+#################################
+
+# Trail location on Linux host
+/oragg/12.2/dirdat
+
+# param file
+dirprm/r${vPDBName}101.prm
+
+# from aix prm file
+/oragg/12.2/dirdat/bpam/ra
+dirdat/${vPDBName}/ra
+
+# (scripted) add replicat
+dirprm/${vPDBName}_LINUX.oby
+
+
+####################
+# create processes #
+####################
+
+-- extract
+dblogin userid GGS@dsrm
+add extract EDSRM1, integrated tranlog, begin now
+add exttrail /move/dsrm01/trail/ea, extract EDSRM1, megabytes 1000
+register extract EDSRM1 database
+start EDSRM1
+
+-- pump
+dblogin userid GGS@dsrm
+add extract PDSRM1, exttrailsource /move/dsrm01/trail/ea
+add rmttrail /app/oracle/product/ggate/12c/1/dirdat/dsrm/ra, extract PDSRM1, megabytes 1000
+start PDSRM1
+
+
+###########
+# queries #
+###########
+
+-- receives messages
+alter session set nls_date_format='MM/DD/YY HH24:MI';
+col STATE format a40
+select APPLY_NAME, STATE, STARTUP_TIME
+from V$GG_APPLY_RECEIVER;
+
+-- reader dequeues messages and passes transactions to coordinator
+select APPLY_NAME, STATE, TOTAL_MESSAGES_DEQUEUED, DEQUEUE_TIME, DEQUEUED_MESSAGE_CREATE_TIME "SOURCE_TIME"
+from V$GG_APPLY_READER;
+
+-- coordinator gets transactions from reader and passes them to apply servers
+select APPLY_NAME, STATE, STARTUP_TIME, TOTAL_APPLIED, TOTAL_RECEIVED, round(TOTAL_APPLIED/TOTAL_RECEIVED*100,0) "PCT", ELAPSED_IDLE_TIME
+from V$GG_APPLY_COORDINATOR;
+
+-- apply server gets messages from coordinator
+select APPLY_NAME, SERVER_ID, STATE, COMMITSCN, APPLY_TIME
+from V$GG_APPLY_SERVER;
+
+--
+col ACTION format a40
+col COMMAND_TYPE format a12
+select to_char(TIMESTAMP,'MM/DD/YY HH24:MI') "TIMESTAMP", MESSAGE_CREATION_TIME, ACTION, OBJECT_OWNER, OBJECT_NAME, COMMAND_TYPE
+from V$GOLDENGATE_MESSAGE_TRACKING
+order by TIMESTAMP, ACTION;
+
+-- archive logs
+col CONSUMER_NAME format a20
+col NAME format a50
+col REQUIRED_CHECKPOINT_SCN format 99999999999999
+SELECT r.CONSUMER_NAME, r.SEQUENCE#, r.NAME
+FROM DBA_REGISTERED_ARCHIVED_LOG r
+WHERE r.SEQUENCE#>=&what_sequence order by 1,2;
+
+-- check status of extract and replicat (pump process does not act on DB)
+col error_message format a70
+col process format a25
+SELECT apply_name process, STATUS, error_message FROM DBA_APPLY
+union
+select capture_name process, status, error_message from dba_capture
+order by process;
+
+
+###################
+# troubleshooting #
+###################
+
+What:		OGG-06591  Reading the output trail file /oraggrep/awdm/ra000000 encounters an error from position 0, rescan from the file header to recover.
+			OGG-01031  There is a problem in network communication, a remote file problem, encryption keys for target and source do not match (if using ENCRYPT) or an unknown error. (Reply received is Output file /oraggrep/awdm/ra000000 is not in any allowed output directories.).
+Where:		/backup_uxs33/ggate/12.2/dirrpt/PAWDM101.rpt
+When:		trying to push to lxoggm01
+
+# Fix 1 attempt #
+https://blog.dbi-services.com/goldengate-12-2-new-parameter-allowoutputdir/
+Added ALLOWOUTPUTDIR parameter to dirprm/GLOBALS file on lxoggm01
+
+# Fix #
+Removed the GGATE/dirdat directory and created link from /oraggrep to it
+
+
+
+What:		OGG-02901  Replication of UDT and ANYDATA from redo logs is not supported with the Oracle compatible parameter setting. Using fetch instead.
+			OGG-02077  Extract encountered a read error in the asynchronous reader thread and is abending: Error code 1089, error message: ORA-01089: immediate shutdown in progress - no operations are permitted
+			OGG-00868  Error code 1291, error message: ORA-01291: missing logfile
+			(Missing Log File NA, THREAD 1, SEQUENCE 10855, SCN 0x000009f2d018a364. Read Position SCN: 2546.3491275622 (10938478011238)).
+Where:		EDSGD1.rpt (uxd33)
+Fix:		Restore archive logs and restart extract
+
+col CONSUMER_NAME format a20
+col NAME format a50
+col REQUIRED_CHECKPOINT_SCN format 99999999999999
+SELECT r.CONSUMER_NAME, r.SEQUENCE#, r.NAME
+FROM DBA_REGISTERED_ARCHIVED_LOG r
+WHERE r.SEQUENCE#>=&what_sequence order by 1,2;
+CONSUMER_NAME         SEQUENCE# NAME
+-------------------- ---------- ------------------------------------------------
+OGG$CAP_EDSGD1            10855 /move/dsgd_arch01/arch/arch1_10855_615049406.dbf
+OGG$CAP_EDSGD1            10856 /move/dsgd_arch01/arch/arch1_10856_615049406.dbf
+OGG$CAP_EDSGD1            10857 /move/dsgd_arch01/arch/arch1_10857_615049406.dbf
+OGG$CAP_EDSGD1            10858 /move/dsgd_arch01/arch/arch1_10858_615049406.dbf
+OGG$CAP_EDSGD1            10859 /move/dsgd_arch01/arch/arch1_10859_615049406.dbf
+OGG$CAP_EDSGD1            10860 /move/dsgd_arch01/arch/arch1_10860_615049406.dbf
+OGG$CAP_EDSGD1            10861 /move/dsgd_arch01/arch/arch1_10861_615049406.dbf
+OGG$CAP_EDSGD1            10862 /move/dsgd_arch01/arch/arch1_10862_615049406.dbf
+OGG$CAP_EDSGD1            10863 /move/dsgd_arch01/arch/arch1_10863_615049406.dbf
+OGG$CAP_EDSGD1            10864 /move/dsgd_arch01/arch/arch1_10864_615049406.dbf
+OGG$CAP_EDSGD1            10865 /move/dsgd_arch01/arch/arch1_10865_615049406.dbf
+OGG$CAP_EDSGD1            10866 /move/dsgd_arch01/arch/arch1_10866_615049406.dbf
+OGG$CAP_EDSGD1            10867 /move/dsgd_arch01/arch/arch1_10867_615049406.dbf
+OGG$CAP_EDSGD1            10868 /move/dsgd_arch01/arch/arch1_10868_615049406.dbf
+
+SELECT r.CONSUMER_NAME, r.SEQUENCE#, r.NAME, c.REQUIRED_CHECKPOINT_SCN
+FROM DBA_REGISTERED_ARCHIVED_LOG r, DBA_CAPTURE c
+WHERE r.CONSUMER_NAME =  c.CAPTURE_NAME AND 
+r.NEXT_SCN >= c.REQUIRED_CHECKPOINT_SCN;
+
+rman target / catalog rman@rman11d
+list backup of archivelog all;
+RESTORE ARCHIVELOG FROM SEQUENCE 10855;
+host 'ls -l /move/dsgd_arch01/arch';
+
+-rw-r-----    1 oracle   dba         4203008 Mar 13 14:47 arch1_10855_615049406.dbf
+-rw-r-----    1 oracle   dba         4716544 Mar 13 14:47 arch1_10856_615049406.dbf
+-rw-r-----    1 oracle   dba        45406208 Mar 13 14:48 arch1_10857_615049406.dbf
+-rw-r-----    1 oracle   dba        23767040 Mar 13 14:47 arch1_10858_615049406.dbf
+-rw-r-----    1 oracle   dba         4152832 Mar 13 14:47 arch1_10859_615049406.dbf
+-rw-r-----    1 oracle   dba         3684864 Mar 13 14:48 arch1_10860_615049406.dbf
+-rw-r-----    1 oracle   dba         3598848 Mar 13 14:48 arch1_10861_615049406.dbf
+-rw-r-----    1 oracle   dba         3424256 Mar 13 14:48 arch1_10862_615049406.dbf
+-rw-r-----    1 oracle   dba         3503616 Mar 13 14:48 arch1_10863_615049406.dbf
+-rw-r-----    1 oracle   dba         3662848 Mar 13 14:48 arch1_10864_615049406.dbf
+-rw-r-----    1 oracle   dba         3614208 Mar 13 14:48 arch1_10865_615049406.dbf
+-rw-r-----    1 oracle   dba         3596288 Mar 13 14:48 arch1_10866_615049406.dbf
+-rw-r-----    1 oracle   dba         3488768 Mar 13 14:48 arch1_10867_615049406.dbf
+-rw-r-----    1 oracle   dba         3389440 Mar 13 14:48 arch1_10868_615049406.dbf
+-rw-r-----    1 oracle   dba        43893248 Mar 13 14:48 arch1_10869_615049406.dbf
+-rw-r-----    1 oracle   dba         9891328 Mar 13 14:48 arch1_10870_615049406.dbf
+-rw-r-----    1 oracle   dba         3983360 Mar 13 14:48 arch1_10871_615049406.dbf
+-rw-r-----    1 oracle   dba         3538944 Mar 13 14:48 arch1_10872_615049406.dbf
+
+
+What:		OGG-02039  Failed to set logmining server parameter MAX_SGA_SIZE to value 12.
+Where:		EAWDD1.rpt (uxd33)
+
+
+
+What:		OGG-00868  Error code 1291, error message: ORA-01291: missing logfile
+			(Missing Log File NA, THREAD 1, SEQUENCE 17107, SCN 0x000009f2be6e44ed. Read Position SCN: 2546.3194897647 (10938181633263)).
+Where:		EEDMAD1.rpt (uxd33)
+Fix:		Restore archive logs and restart extract
+
+cat /nomove/app/oracle/ggate/12c/1/dirrpt/EEDMAD1.rpt | grep Missing | grep SEQUENCE | awk '{print $8'} | sed 's/,//'
+17107
+
+rman target / catalog rman@rman11d
+list backup of archivelog all;
+RESTORE ARCHIVELOG FROM SEQUENCE 17107;
+
+ls -l /move/edmad_arch01/arch
+
+
+
+What:		OGG-00868  Error code 1291, error message: ORA-01291: missing logfile
+			(Missing Log File NA, THREAD 1, SEQUENCE 2732, SCN 0x000009f289d7aaec. Read Position SCN: 2546.2312612590 (10937299348206)).
+Where:		EOSCRD1.rpt (uxd33)
+Fix:		Restore archive logs and restart extract
+
+
+
+What:		OGG-00664  OCI Error Flushing database inbound server, 'OGG$RBPAM1' (status = 24010-ORA-24010: QUEUE GGS.OGGQ$RBPAM1 does not exist).
+Where:		RBPAM.rpt (uxs33)
+ls -lrt *EEDMAD1*
+
+
+What:		
+			
+Where:		
+ls -lrt *EEDMAD1*
+
+
+What:		
+			
+Where:		
+ls -lrt *EEDMAD1*
+
+
+###########################
+# Troubleshooting Queries #
+###########################
+
+-- check stats of apply in replicat
+select state from v$gg_apply_receiver; 
+
+-- see activity of replicat in target DB
+set lines 150 pages 200
+COLUMN username FORMAT A10
+COLUMN program FORMAT A35
+col osuser format a10
+col sid format 9990
+col "SER" format 99990
+col "Description" format a55
+ALTER SESSION SET NLS_DATE_FORMAT='MM/DD/RR HH24:MI';
+SELECT distinct s.sid, s.serial# "SER", s.username, s.osuser, s.sql_id, s.SQL_HASH_VALUE,
+decode(s.state,'WAITING','Waiting '||s.seconds_in_wait||'s for '||NVL2(q.sql_text, q.sql_text, event),q.sql_text) "Description"
+FROM v$session s left outer join v$sql q on s.sql_id=q.sql_id
+WHERE s.username='GGS';
+
+-- get plan of sql
+SELECT * FROM table (DBMS_XPLAN.DISPLAY_CURSOR('&what_sqlid'));
+
+-- check if a table has constraints
+set long 40
+col owner format a20
+col constraint_name format a30
+col column_name format a30
+select dc.owner, dc.constraint_name, col.column_name, dc.constraint_type, dc.status
+from dba_constraints dc join dba_cons_columns col
+  on dc.constraint_name = col.constraint_name
+where dc.table_name='&tbl_name' and dc.owner='&what_owner'
+order by dc.constraint_type desc, dc.constraint_name asc;
+
+-- tables without PK or UK
+col "TABLE_NAME" format a60
+--select owner, count(table_name) from dba_tables where (owner, table_name) not in (
+select owner||'.'||table_name "TABLE_NAME" from dba_tables where (owner, table_name) not in (
+	select owner, table_name from dba_constraints where constraint_type in ('P','U')
+) and owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS','SQLTUNE','GGTEST')
+order by 1;
+
+-- check if a column is unique
+select AWD_PROC_SEQ, count(*)
+from "BPA_APPS"."CDS_TO_AWD_FEED_PROCESS_INFO"
+group by AWD_PROC_SEQ
+having count(*) > 1;

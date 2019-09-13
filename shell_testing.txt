@@ -1,0 +1,96 @@
+***profile***
+declare -x EDITOR="vim"
+declare -x HOME="/home/oracle"
+declare -x LD_LIBRARY_PATH="/app/oracle/product/db/12c/1/lib"
+declare -x ORACLE_BASE="/app/oracle"
+declare -x ORACLE_HOME="/app/oracle/product/db/12c/1"
+declare -x ORACLE_PATH="/app/oracle/product/db/12c/1/bin"
+declare -x ORACLE_SCRIPT="/app/oracle/scripts"
+declare -x ORACLE_SID="none"
+declare -x ORA_SETENV_SCRIPT_PATH="/app/oracle/setenv"
+declare -x PATH="/app/oracle/product/db/12c/1/bin:/app/oracle/product/db/12c/1/OPatch:/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/home/oracle/.local/bin:/usr/bin:/etc:/usr/sbin:/home/oracle/bin:/usr/local/bin:.:/usr/bin/scp"
+declare -x PS1="[\\u@\\h-\$PWD]\$> "
+declare -x SHELL="/bin/bash"
+declare -x TNS_ADMIN="/app/oracle/tns_admin"
+alias 11ghome='. $ORA_SETENV_SCRIPT_PATH/set11ghome.sh'
+alias 12chome='. $ORA_SETENV_SCRIPT_PATH/set12chome.sh'
+alias LISTENER='. $ORA_SETENV_SCRIPT_PATH/setlistener.sh'
+alias l.='ls -d .* --color=auto'
+alias listener='. $ORA_SETENV_SCRIPT_PATH/setlistener.sh'
+alias ll='ls -l --color=auto'
+alias pmonn='/app/home/oracle/pmonn12c.pm'
+
+
+##############
+# ksh script #
+##############
+
+[oracle@LXAWRS01-/app/oracle/scripts]$> which sh
+/bin/sh
+
+#!/bin/ksh
+[oracle@LXAWRS01-/app/oracle/scripts]$> ./init12c.ksh
+variables not carried over
+
+[oracle@LXAWRS01-/app/oracle/scripts]$> init12c.ksh
+variables not carried over
+
+[oracle@LXAWRS01-/app/oracle/scripts]$> /bin/ksh /app/oracle/scripts/init12c.ksh
+variables not carried over
+
+[oracle@LXAWRS01-/app/oracle/scripts]$> . /app/oracle/scripts/init12c.ksh
+-bash: set: -A: invalid option
+set: usage: set [-abefhkmnptuvxBCHP] [-o option-name] [--] [arg ...]
+variables carried over
+runs in bash
+
+[oracle@LXAWRS01-/app/oracle/scripts]$> . ./init12c.ksh
+variables carried over
+runs in bash
+
+
+#!/usr/bin/ksh
+[oracle@LXAWRS01-/app/oracle/scripts]$> . /app/oracle/scripts/init12c.ksh
+runs in bash
+
+
+#!/bin/ksh93
+[oracle@LXAWRS01-/app/oracle/scripts]$> . /app/oracle/scripts/init12c.ksh
+runs in bash
+
+
+###############
+# bash script #
+###############
+
+shelltest1.bsh
+-bash: shelltest1.bsh: command not found
+
+./shelltest1.bsh
+variable not carried over
+
+. ./shelltest1.bsh
+variable is carried over
+
+
+
+
+#########
+# uxd33 #
+#########
+
+which sh
+/usr/bin/sh
+
+/nomove/home/oracle/local/script/init.ksh
+/nomove/home/oracle/local/script/oaliases.ksh
+
+cd /nomove/home/oracle/local/script
+unalias wstodsd
+
+./oaliases.ksh
+# alias not set
+
+. /nomove/home/oracle/local/script/oaliases.ksh
+# alias set
+# script works

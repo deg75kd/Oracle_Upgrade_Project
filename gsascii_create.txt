@@ -1,0 +1,228 @@
+#########
+# GS12C #
+#########
+
+        ID FILE_NAME                                                                           MB      MaxMB AUT
+---------- --------------------------------------------------------------------------- ---------- ---------- ---
+         3 /database/cgs12c01/oradata/sysaux01.dbf                                          1,100     32,000 YES
+         1 /database/cgs12c01/oradata/system01.dbf                                            900     32,000 YES
+         8 /database/cgs12c01/oradata/tools01.dbf                                             150     32,000 YES
+         5 /database/cgs12c01/oradata/undo01.dbf                                              100        100 NO
+         6 /database/cgs12c01/oradata/users01.dbf                                              50     32,000 YES
+                                                                                       ---------- ----------
+TOTAL                                                                                       2,300    128,100
+
+  ID FILE_NAME                                                    TS                           MB      MAXMB AUT
+---- ------------------------------------------------------------ -------------------- ---------- ---------- ---
+   1 /database/cgs12c01/oradata/temp01.dbf                        TEMP                        100        100 NO
+                                                                                       ---------- ----------
+TOTA                                                                                          100        100
+
+    CON_ID TABLESPACE                FILE# FILE_NAME
+---------- -------------------- ---------- --------------------------------------------------
+         1 SYSAUX                        3 /database/cgs12c01/oradata/sysaux01.dbf
+         1 SYSTEM                        1 /database/cgs12c01/oradata/system01.dbf
+         1 TOOLS                         8 /database/cgs12c01/oradata/tools01.dbf
+         1 UNDO                          5 /database/cgs12c01/oradata/undo01.dbf
+         1 USERS                         6 /database/cgs12c01/oradata/users01.dbf
+         2 SYSAUX                        4 /database/cgs12c01/oradata/pdbseed/sysaux01.dbf
+         2 SYSTEM                        2 /database/cgs12c01/oradata/pdbseed/system01.dbf
+         2 TOOLS                        12 /database/cgs12c01/oradata/pdbseed/tools01.dbf
+         2 USERS                         7 /database/cgs12c01/oradata/pdbseed/users01.dbf
+
+
+###########
+# GSASCII #
+###########
+
+create pfile from spfile;
+shutdown immediate;
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+control_files                        string      /app/oracle/oradata/gsascii/co
+                                                 ntrol01.ctl, /app/oracle/orada
+                                                 ta/gsascii/control02.ctl
+
+set lines 150 pages 200
+col "TABLESPACE" format a20
+col "FILE_NAME" format a50
+select df.CON_ID, ts.NAME "TABLESPACE", df.FILE#, df.NAME "FILE_NAME"
+from v$datafile df, v$tablespace ts
+where df.TS#=ts.TS# and df.CON_ID=ts.CON_ID
+order by 1,2,3;
+
+    CON_ID TABLESPACE                FILE# FILE_NAME
+---------- -------------------- ---------- --------------------------------------------------
+         1 SYSAUX                        3 /app/oracle/oradata/gsascii/sysaux01.dbf
+         1 SYSTEM                        1 /app/oracle/oradata/gsascii/system01.dbf
+         1 UNDOTBS1                      4 /app/oracle/oradata/gsascii/undotbs01.dbf
+         1 USERS                         6 /app/oracle/oradata/gsascii/users01.dbf
+         2 SYSAUX                        7 /app/oracle/oradata/gsascii/pdbseed/sysaux01.dbf
+         2 SYSTEM                        5 /app/oracle/oradata/gsascii/pdbseed/system01.dbf
+
+        ID FILE_NAME                                                                           MB      MaxMB AUT
+---------- --------------------------------------------------------------------------- ---------- ---------- ---
+         3 /app/oracle/oradata/gsascii/sysaux01.dbf                                           570     32,768 YES
+         1 /app/oracle/oradata/gsascii/system01.dbf                                           780     32,768 YES
+         4 /app/oracle/oradata/gsascii/undotbs01.dbf                                          335     32,768 YES
+         6 /app/oracle/oradata/gsascii/users01.dbf                                              5     32,768 YES
+                                                                                       ---------- ----------
+TOTAL                                                                                       1,690    131,072
+
+  ID FILE_NAME                                                    TS                           MB      MAXMB AUT
+---- ------------------------------------------------------------ -------------------- ---------- ---------- ---
+   1 /app/oracle/oradata/gsascii/temp01.dbf                       TEMP                         60     32,768 YES
+                                                                                       ---------- ----------
+TOTA                                                                                           60     32,768
+
+ALTER DATABASE DATAFILE 3 AUTOEXTEND ON NEXT 256M MAXSIZE 32000M;
+ALTER DATABASE DATAFILE 1 AUTOEXTEND ON NEXT 256M MAXSIZE 32000M;
+ALTER DATABASE DATAFILE 4 AUTOEXTEND ON NEXT 256M MAXSIZE 32000M;
+ALTER DATABASE DATAFILE 6 AUTOEXTEND ON NEXT 256M MAXSIZE 32000M;
+ALTER DATABASE TEMPFILE 1 RESIZE 100M;
+ALTER DATABASE TEMPFILE 1 AUTOEXTEND OFF;
+ALTER TABLESPACE UNDOTBS1 RENAME TO undo;
+
+
+select file_id "ID", tablespace_name, file_name, (bytes/1024/1024) "MB", 
+(decode(maxbytes,0,bytes,maxbytes)/1024/1024) "MaxMB", autoextensible
+from dba_data_files
+union
+select file_id "ID", tablespace_name, file_name, (bytes/1024/1024) "MB", 
+(decode(maxbytes,0,bytes,maxbytes)/1024/1024) "MaxMB", autoextensible
+from dba_temp_files
+order by file_name;
+
+  ID TABLESPACE_NAME                FILE_NAME                                                            MB      MaxMB AUT
+---- ------------------------------ ------------------------------------------------------------ ---------- ---------- ---
+   3 SYSAUX                         /app/oracle/oradata/gsascii/sysaux01.dbf                            570     32,000 YES
+   1 SYSTEM                         /app/oracle/oradata/gsascii/system01.dbf                            780     32,000 YES
+   1 TEMP                           /app/oracle/oradata/gsascii/temp01.dbf                              100        100 NO
+   4 UNDO                           /app/oracle/oradata/gsascii/undotbs01.dbf                           335     32,000 YES
+   6 USERS                          /app/oracle/oradata/gsascii/users01.dbf                               5     32,000 YES
+                                                                                                 ---------- ----------
+TOTA                                                                                                  1,790    128,100
+
+CREATE TABLESPACE "TOOLS" DATAFILE
+'/app/oracle/oradata/gsascii/tools01.dbf' SIZE 157286400
+AUTOEXTEND ON NEXT 104857600 MAXSIZE 32000M
+LOGGING ONLINE PERMANENT BLOCKSIZE 8192
+EXTENT MANAGEMENT LOCAL UNIFORM SIZE 163840 DEFAULT
+NOCOMPRESS  SEGMENT SPACE MANAGEMENT AUTO;
+
+        ID TABLESPACE_NAME                FILE_NAME                                                            MB      MaxMB AUT
+---------- ------------------------------ ------------------------------------------------------------ ---------- ---------- ---
+         3 SYSAUX                         /app/oracle/oradata/gsascii/sysaux01.dbf                            826      32000 YES
+         1 SYSTEM                         /app/oracle/oradata/gsascii/system01.dbf                            780      32000 YES
+         1 TEMP                           /app/oracle/oradata/gsascii/temp01.dbf                              100        100 NO
+         8 TOOLS                          /app/oracle/oradata/gsascii/tools01.dbf                             150      32000 YES
+         4 UNDO                           /app/oracle/oradata/gsascii/undotbs01.dbf                           335      32000 YES
+         6 USERS                          /app/oracle/oradata/gsascii/users01.dbf                               5      32000 YES
+
+col "TABLESPACE" format a20
+col "FILE_NAME" format a50
+select df.CON_ID, ts.NAME "TABLESPACE", df.FILE#, df.NAME "FILE_NAME"
+from v$tempfile df, v$tablespace ts
+where df.TS#=ts.TS# and df.CON_ID=ts.CON_ID
+order by 1,2,3;
+
+
+col name format a30
+col display_value format a100
+select name, display_value
+from v$spparameter
+where ISSPECIFIED='TRUE'
+order by 1;
+
+NAME                           DISPLAY_VALUE
+------------------------------ ----------------------------------------------------------------------------------------------------
+audit_file_dest                /app/oracle/admin/gsascii/adump
+audit_trail                    db
+compatible                     12.1.0.2.0
+control_files                  /app/oracle/oradata/gsascii/control01.ctl
+control_files                  /app/oracle/oradata/gsascii/control02.ctl
+db_block_size                  8192
+db_domain
+db_name                        gsascii
+diagnostic_dest                /app/oracle
+dispatchers                    (PROTOCOL=TCP) (SERVICE=gsasciiXDB)
+enable_pluggable_database      true
+local_listener                 LISTENER_GSASCII
+open_cursors                   300
+pga_aggregate_target           375M
+processes                      300
+remote_login_passwordfile      EXCLUSIVE
+sga_target                     1125M
+undo_tablespace                UNDO
+
+alter system set memory_target=1500M scope=spfile;
+alter system reset sga_target;
+alter system reset pga_aggregate_target;
+alter system reset local_listener;
+
+shutdown immediate;
+startup;
+
+alter session set container=pdb$seed;
+alter session set "_oracle_script"=true;
+shut immediate
+startup
+create tablespace TOOLS datafile '/app/oracle/oradata/gsascii/pdbseed/tools01.dbf' size 100M AUTOEXTEND ON NEXT 100M MAXSIZE 32000M;
+create tablespace USERS datafile '/app/oracle/oradata/gsascii/pdbseed/users01.dbf' size 50M AUTOEXTEND ON NEXT 100M MAXSIZE 32000M;
+shut immediate 
+startup open read only
+alter session set "_oracle_script"=false;
+
+
+rman target /
+CONFIGURE BACKUP OPTIMIZATION ON;
+CONFIGURE CONTROLFILE AUTOBACKUP ON;
+CONFIGURE MAXSETSIZE TO 32G;
+CONFIGURE DEFAULT DEVICE TYPE TO DISK;
+CONFIGURE DEVICE TYPE DISK PARALLELISM 3;
+CONFIGURE RETENTION POLICY TO REDUNDANCY 1;
+CONFIGURE CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '/app/rman/gsascii/control_%d_%F';
+CONFIGURE CHANNEL DEVICE TYPE DISK FORMAT '/app/rman/gsascii/BK_%d_%s_%p_%t';
+CONFIGURE SNAPSHOT CONTROLFILE NAME TO '/app/rman/gsascii/snap_gsascii.f';
+CONFIGURE DEVICE TYPE DISK BACKUP TYPE TO COMPRESSED BACKUPSET;
+SHOW ALL;
+
+run
+{
+	shutdown immediate;
+	startup mount;
+	backup incremental level 0 database plus archivelog;
+	delete noprompt force obsolete;
+	sql 'alter database open';
+}
+
+
+scp /app/rman/gsascii/* LXORADWSD01:/oragg/gsascii
+
+
+    CON_ID TABLESPACE                FILE# FILE_NAME
+---------- -------------------- ---------- --------------------------------------------------
+         1 SYSAUX                        3 /app/oracle/oradata/gsascii/sysaux01.dbf
+         1 SYSTEM                        1 /app/oracle/oradata/gsascii/system01.dbf
+         1 TOOLS                         8 /app/oracle/oradata/gsascii/tools01.dbf
+         1 UNDO                          4 /app/oracle/oradata/gsascii/undotbs01.dbf
+         1 USERS                         6 /app/oracle/oradata/gsascii/users01.dbf
+         2 SYSAUX                        7 /app/oracle/oradata/gsascii/pdbseed/sysaux01.dbf
+         2 SYSTEM                        5 /app/oracle/oradata/gsascii/pdbseed/system01.dbf
+         2 TOOLS                        10 /app/oracle/oradata/gsascii/pdbseed/tools01.dbf
+         2 USERS                        11 /app/oracle/oradata/gsascii/pdbseed/users01.dbf
+
+    CON_ID TABLESPACE                FILE# FILE_NAME
+---------- -------------------- ---------- --------------------------------------------------
+         1 TEMP                          1 /app/oracle/oradata/gsascii/temp01.dbf
+         2 TEMP                          2 /app/oracle/oradata/gsascii/pdbseed/pdbseed_temp01
+                                           2017-03-28_10-16-03-PM.dbf
+
+
+
+
+
+change common parameter
+create common users
+common profiles

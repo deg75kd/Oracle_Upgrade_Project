@@ -1,0 +1,3801 @@
+############# Linux directories #####################
+
+mkdir /database/cidevp01
+mkdir /database/cidevp_admn01
+mkdir /database/cidevp_arch01
+mkdir /database/cidevp_redo01
+mkdir /database/cidevp_redo02
+mkdir /database/idevp01
+mkdir /database/oragg/datapump/idevp
+
+############# GG install #####################
+
+-- uxt33
+/nomove/app/oracle/ggate/12c/1/dirdat -> /oragg/trail
+/oragg/trail -> dirdat
+
+rm -R /oragg/trail
+mkdir /oragg/trail
+
+-- uxt34
+ll /nomove/app/oracle/ggate/12c/1/dirdat
+drwxrwxrwx    2 oracle   dba             256 Jun  5 02:33 idevt
+
+cd /nomove/app/oracle/ggate/12c/1
+./ggsci
+stop EIDEVT1
+stop PIDEVT1
+EXTRACT     STOPPED     EIDEVT1     00:00:10      00:00:08
+EXTRACT     STOPPED     PIDEVT1     00:00:00      00:00:02
+
+mkdir /oragg/trail/idevt
+mv /nomove/app/oracle/ggate/12c/1/dirdat/idevt/ea000000000 /oragg/trail/idevt
+rm -R /nomove/app/oracle/ggate/12c/1/dirdat
+ln -s /oragg/trail /nomove/app/oracle/ggate/12c/1/dirdat
+
+/nomove/app/oracle/ggate/12c/1/dirdat -> /oragg/trail
+ll /nomove/app/oracle/ggate/12c/1/dirdat/idevt
+-rw-r-----    1 oracle   dba            4149 Jun  5 08:29 ea000000000
+
+./ggsci
+start EIDEVT1
+start PIDEVT1
+
+
+-- Linux
+/app/oracle/product/ggate/12c/1
+/app/oracle/product/ggate/11g/1
+
+
+
+############# GG_1_AIX_start_extract.sh #####################
+
+*** DDL during export ***
+DDLs cannot be done on tables/views/indexes during an export when using FLASHBACK (scn or time). 
+Doing DDLs invalidates the scn, so that is why the error is generated. 
+This information is in Note "Parameters FLASHBACK_SCN And FLASHBACK_TIME: Point In Time Export" ( Doc ID 204334.1 ), 
+in the section ORA-1466 under TYPICAL ERRORS. 
+This says use a newer SCN but if you are having frequent DDL, this may not work either. 
+This note also identifies which types of DDL will cause the SCN number to be invalidated. 
+
+
+*** missing privs ***
+-- blcnavm (uxm34, LXORABPAM01)
+GRANT SELECT ON SYS.DBA_PENDING_TRANSACTIONS TO FO;
+GRANT EXECUTE ON SYS.DBMS_SYSTEM TO FO;
+GRANT SELECT ON SYS.V_$INSTANCE TO FO;
+GRANT SELECT ON SYS.V_$SESSION TO FO;  
+
+
+*** PUBLIC privileges verification ***
+-- idevt
+grant create procedure to public;
+
+-- line 1236
+create table ggtest.${vPubPrivTable} as
+	/* DIRECT OBJ PRIVILEGES */ 	
+select grantee, owner, table_name, privilege
+from dba_tab_privs
+where grantee='PUBLIC'
+and (OWNER,TABLE_NAME) not in (SELECT owner, object_name FROM dba_recyclebin)
+UNION 
+	/* DIRECT SYS PRIVILEGES */ 
+select grantee, 'n/a', 'n/a', privilege
+from dba_sys_privs
+where (grantee, privilege) not in
+	(select r.role, 'UNLIMITED TABLESPACE' from dba_roles r)
+and grantee='PUBLIC';
+
+select grantee, 'n/a', 'n/a', privilege
+from dba_sys_privs
+where grantee='PUBLIC';
+
+vPubPrivTable
+vLinuxPubPrivTable
+
+set lines 150 pages 200
+col "AIX_PRIVILEGE" format a48
+col "LINUX_PRIVILEGE" format a48
+select NVL(aix.grantee,lx.grantee) "GRANTEE", 
+NVL2(aix.privilege,
+	CASE aix.owner
+		WHEN 'n/a' THEN aix.privilege
+		ELSE aix.privilege||' on '||aix.owner||'.'||aix.table_name
+	END
+	,'-') "AIX_PRIVILEGE", 
+NVL2(lx.privilege,
+	CASE lx.owner
+		WHEN 'n/a' THEN lx.privilege
+		ELSE lx.privilege||' on '||lx.owner||'.'||lx.table_name
+	END
+	,'-') "LINUX_PRIVILEGE"
+from ggtest.pub_privs_linux lx full outer join ggtest.pub_privs_aix aix
+	on aix.grantee=lx.grantee and aix.owner=lx.owner and aix.table_name=lx.table_name and aix.privilege=lx.privilege
+where lx.grantee is null --or aix.grantee is null
+--and lx.privilege not in ('SET CONTAINER')
+order by 1,2,3;
+
+col grantee format a8
+col owner format a20
+col privilege format a20
+col object_type format a30
+col object_name format a30
+select NVL(aix.grantee,lx.grantee) "GRANTEE", 
+NVL2(aix.privilege,
+	CASE aix.owner
+		WHEN 'n/a' THEN aix.privilege
+		ELSE aix.privilege||' on '||aix.owner||'.'||aix.table_name
+	END
+	,'-') "AIX_PRIVILEGE", 
+	obj.object_type
+--NVL2(lx.privilege,
+--	CASE lx.owner
+--		WHEN 'n/a' THEN lx.privilege
+--		ELSE lx.privilege||' on '||lx.owner||'.'||lx.table_name
+--	END
+--	,'-') "LINUX_PRIVILEGE"
+--select aix.grantee, aix.privilege, aix.owner, aix.table_name, obj.object_name, obj.object_type
+from ggtest.pub_privs_linux lx full outer join ggtest.pub_privs_aix aix
+	on aix.grantee=lx.grantee and aix.owner=lx.owner and aix.table_name=lx.table_name and aix.privilege=lx.privilege
+left outer join dba_objects obj on aix.owner=obj.owner and aix.table_name=obj.object_name
+where lx.grantee is null --or aix.grantee is null
+--and lx.privilege not in ('SET CONTAINER')
+order by 1,2,3;
+
+select NVL(sub.grantee,lx.grantee) "GRANTEE", 
+	NVL2(sub.privilege,
+		CASE sub.owner
+		WHEN 'n/a' THEN sub.privilege
+		ELSE sub.privilege||' on '||sub.owner||'.'||sub.table_name
+	END
+	,'-') "AIX_PRIVILEGE", 
+	sub.object_type
+from ggtest.pub_privs_linux lx full outer join (
+	select aix.grantee, aix.privilege, aix.owner, aix.table_name, obj.object_type
+	from ggtest.pub_privs_aix aix left outer join dba_objects obj on aix.owner=obj.owner and aix.table_name=obj.object_name
+	where aix.owner='n/a' or obj.object_name is not null) sub
+	on sub.grantee=lx.grantee and sub.owner=lx.owner and sub.table_name=lx.table_name and sub.privilege=lx.privilege
+where lx.grantee is null
+order by 1,2,3;
+
+
+
+
+
+
+*** PUBLIC privileges ***
+-- prodm (uxm33)
+-- line 1816
+SELECT 'GRANT '||PRIVILEGE||' on "'||OWNER||'".'||TABLE_NAME
+  ||' to "'||grantee||'"'||DECODE(grantable,'YES',' with grant option','')
+  || ' container=all'
+  || '     /* grantor '||grantor||'*/'||';' "STMT"
+FROM dba_tab_privs
+WHERE owner        IN ('SYSTEM','SYS')
+AND table_name NOT IN (SELECT directory_name FROM dba_directories)
+AND grantor NOT IN ('QUEST','SPOTLIGHT','SPOTLIGHT1')
+AND grantee='PUBLIC'
+ORDER BY owner, table_name, privilege ;
+
+-- line 1774
+SELECT 'grant '|| dsp.privilege ||' to "'|| dsp.grantee || '" ' ||
+  (CASE
+    WHEN dsp.admin_option = 'YES'
+    THEN 'WITH admin OPTION'
+    ELSE NULL
+  END)
+  || ';' "STMT"
+FROM dba_sys_privs dsp
+WHERE (dsp.grantee, dsp.privilege) NOT IN
+	(select dr.role, sp.privilege
+	 from dba_sys_privs sp, dba_roles dr
+	 where sp.grantee=dr.role and sp.privilege='UNLIMITED TABLESPACE')
+AND dsp.GRANTEE='PUBLIC'
+UNION
+SELECT 'grant '|| drp.granted_role || ' to "'|| drp.grantee || '" '||
+  (CASE
+    WHEN drp.admin_option = 'YES'
+    THEN 'WITH ADMIN OPTION'
+    ELSE NULL
+  END)
+  || ';' 
+FROM dba_role_privs drp
+WHERE drp.GRANTEE NOT IN ($vExcludeUsers)
+AND drp.GRANTEE NOT IN ($vExcludeRoles)
+UNION
+SELECT 'grant '|| sp.privilege || ' to "'|| rp.grantee || '" '||
+  (CASE
+    WHEN sp.admin_option = 'YES'
+    THEN 'WITH ADMIN OPTION'
+    ELSE NULL
+  END)
+  || ';' 
+from dba_sys_privs sp, dba_roles dr, dba_role_privs rp, dba_users du
+where sp.grantee=dr.role and rp.granted_role=dr.role and du.username=rp.grantee
+and sp.privilege='UNLIMITED TABLESPACE'
+and rp.grantee not in ($vExcludeUsers);
+
+
+grant EXECUTE on SYS.CALC_TEMP_TBS_FREE to PUBLIC;	-- already granted
+grant EXECUTE on SYS.DBMS_REPUTIL to PUBLIC;
+grant EXECUTE on SYS.DBMS_REPUTIL2 to PUBLIC;
+grant EXECUTE on SYS.DBMS_XRWMV to PUBLIC;
+grant EXECUTE on SYS.GETUSERSQLSCRIPT to PUBLIC;	-- ORA-04042: procedure, function, package, or package body does not exist
+
+
+
+*** ORA-01858: a non-numeric character was found where a numeric was expected ***
+-- blcnavm - uxm34
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+nls_date_format                      string
+
+select * from nls_database_parameters order by 1;
+PARAMETER                      VALUE
+------------------------------ ----------------------------------------
+NLS_DATE_FORMAT                DD-MON-RR
+NLS_DATE_LANGUAGE              AMERICAN
+NLS_LANGUAGE                   AMERICAN
+NLS_TERRITORY                  AMERICA
+
+-- blcnavm - LXORABPAM01
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+nls_date_format                      string      MM/DD/YYYY
+
+select * from nls_database_parameters order by 1;
+PARAMETER                                VALUE
+---------------------------------------- ----------------------------------------------------------------
+NLS_DATE_FORMAT                          DD-MON-RR
+NLS_DATE_LANGUAGE                        AMERICAN
+NLS_LANGUAGE                             AMERICAN
+NLS_TERRITORY                            AMERICA
+
+select * from nls_session_parameters order by 1;
+PARAMETER                                VALUE
+---------------------------------------- ----------------------------------------------------------------
+NLS_DATE_FORMAT                          MM/DD/YYYY
+NLS_DATE_LANGUAGE                        AMERICAN
+NLS_LANGUAGE                             AMERICAN
+NLS_TERRITORY                            AMERICA
+
+select * from nls_instance_parameters order by 1;
+PARAMETER                                VALUE
+---------------------------------------- ----------------------------------------------------------------
+NLS_DATE_FORMAT                          MM/DD/YYYY
+NLS_LANGUAGE                             AMERICAN
+NLS_TERRITORY                            AMERICA
+
+
+*** external users ***
+-- AUTOCAPTM in bpam
+WITH pt AS
+	(select tablespace_name from dba_tablespaces where contents='PERMANENT'),
+tt AS
+	(select tablespace_name from dba_tablespaces where contents='TEMPORARY'),
+us AS
+	(select name, password from user$)
+--select 'CREATE USER "'||du.username||'" IDENTIFIED BY VALUES '''||NVL(us.password,'127CCE670C325256')||
+--	''' DEFAULT TABLESPACE '||NVL(pt.tablespace_name,'USERS')||  
+--	' TEMPORARY TABLESPACE '||NVL(tt.tablespace_name,'TEMP')||  
+--	' PROFILE '||du.profile||';' "STMT"
+select du.username, du.AUTHENTICATION_TYPE
+from dba_users du join us on du.username=us.name
+	full outer join pt on du.default_tablespace=pt.tablespace_name
+	full outer join tt on du.temporary_tablespace=tt.tablespace_name
+where du.AUTHENTICATION_TYPE!='EXTERNAL'
+and du.username NOT IN 
+('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+order by du.username;
+
+select 'CREATE USER "'||substr(us.username,NVL(length(pf.value),0)+1)||'${vTierCap}" IDENTIFIED EXTERNALLY'||
+	' DEFAULT TABLESPACE '||us.default_tablespace||
+	' TEMPORARY TABLESPACE '||us.temporary_tablespace||
+	' PROFILE '||us.profile||';'
+	"STMT"
+--select us.username, us.AUTHENTICATION_TYPE
+from dba_users us,
+(select upper(value) "VALUE" from v$parameter where name='os_authent_prefix') pf
+where us.AUTHENTICATION_TYPE='EXTERNAL' and us.username!='OPS$ORACLE'
+and us.username not like '%UT' and us.username not like '%SIT' and us.username not like '%UAT' and us.username not like '%PROD'
+order by us.username;
+
+-- portalp - IVRP created as P
+select 'CREATE USER "'||substr(us.username,NVL(length(pf.value),0)+1)||'${vTierCap}" IDENTIFIED EXTERNALLY CONTAINER=ALL'||
+	' DEFAULT TABLESPACE '||us.default_tablespace||
+	' TEMPORARY TABLESPACE '||us.temporary_tablespace||
+	' PROFILE '||us.profile||';'
+	"STMT"
+select us.username, pf.value, 
+--substr(us.username,NVL(length(pf.value),0)+1) "NEWNAME"
+case INSTR(us.username, pf.value)
+	when 1 then substr(us.username,NVL(length(pf.value),0)+1) 
+	else us.username
+end "NEWNAME"
+from dba_users us,
+(select upper(value) "VALUE" from v$parameter where name='os_authent_prefix') pf
+where us.AUTHENTICATION_TYPE='EXTERNAL' --and us.username!='OPS$ORACLE'
+and us.username not like '%UT' and us.username not like '%SIT' and us.username not like '%UAT' and us.username not like '%PROD';
+
+DATABASE USERNAME		                VALUE	        NEWNAME
+-------- ------------------------------ --------------- ------------------------------
+BPAP     OPS$AUTOCAPT		            OPS$	        AUTOCAPTP
+PORTALP  IVRP                           OPS$            P -> created manually; doesn't adhere to rules
+IDWP     OPS$AUTOAHM		            OPS$	        AUTOAHMP
+IDWP     OPS$AUTOAIS		            OPS$	        AUTOAISP
+IDWP     OPS$AUTOARDB		            OPS$	        AUTOARDBP
+IDWP     OPS$AUTOAVM		            OPS$	        AUTOAVMP
+IDWP     OPS$AUTOBDW		            OPS$	        AUTOBDWP
+IDWP     OPS$AUTOCOMM		            OPS$	        AUTOCOMMP
+IDWP     OPS$AUTOCSV		            OPS$	        AUTOCSVP
+IDWP     OPS$AUTOEIP		            OPS$	        AUTOEIPP
+IDWP     OPS$AUTOIDW		            OPS$	        AUTOIDWP
+IDWP     OPS$AUTOMKTG		            OPS$	        AUTOMKTGP
+IDWP     OPS$AUTONBCR		            OPS$	        AUTONBCRP
+IDWP     OPS$AUTONBM		            OPS$	        AUTONBMP
+IDWP     OPS$AUTOPDM		            OPS$	        AUTOPDMP
+IDWP     OPS$AUTORDS		            OPS$	        AUTORDSP
+IDWP     OPS$AUTOWKST		            OPS$	        AUTOWKSTP
+CNOFDWP  ORACNOFDWP		                OPS$	        NOFDWP -> already exists
+FDLZP    ORAFDLZP		                OPS$	        DLZP -> already exists
+
+select 'CREATE USER "'||
+case INSTR(us.username, pf.value)
+	when 1 then substr(us.username,NVL(length(pf.value),0)+1) 
+	else us.username
+end
+	||'${vTierCap}" IDENTIFIED EXTERNALLY CONTAINER=ALL'||
+	' DEFAULT TABLESPACE '||us.default_tablespace||
+	' TEMPORARY TABLESPACE '||us.temporary_tablespace||
+	' PROFILE '||us.profile||';'
+	"STMT"
+--select us.username, pf.value,substr(us.username,NVL(length(pf.value),0)+1)
+from dba_users us,
+(select upper(value) "VALUE" from v$parameter where name='os_authent_prefix') pf
+where us.AUTHENTICATION_TYPE='EXTERNAL' --and us.username!='OPS$ORACLE'
+--and us.username not like '%UT' and us.username not like '%SIT' and us.username not like '%UAT' and us.username not like '%PROD'
+and (us.username like '%UT' or us.username like '%SIT' or us.username like '%UAT' or us.username like '%PROD');
+
+
+set lines 150 pages 200
+col "NEWUSER" format a30
+select us.username,
+case INSTR(us.username, pf.value)
+	when 1 then substr(us.username,NVL(length(pf.value),0)+1) 
+	else us.username 
+end ||'P' "NEWUSER"
+from dba_users us,
+(select upper(value) "VALUE" from v$parameter where name='os_authent_prefix') pf
+where us.AUTHENTICATION_TYPE='EXTERNAL' and us.username!='OPS$ORACLE'
+and us.username not like '%UT' and us.username not like '%SIT' and us.username not like '%UAT' and us.username not like '%PROD'
+order by 1;
+
+*** grants - OS users ***
+GRANT CREATE SESSION TO TEST_UTS CONTAINER=ALL
+                        *
+ERROR at line 1:
+ORA-01917: user or role 'TEST_UTS' does not exist
+
+
+*** ACL ***
+-- cnofdwm
+
+
+
+*** global_names parameter ***
+-- cnofdwm DB links not working; global_names different on Linux
+
+
+
+*** TS size ***
+-- idwm (initial size too small)
+CREATE TABLESPACE AWD_STAG_DEFAULT_D DATAFILE '/database/idwm01/oradata/awd_stag_default_d01.dbf' SIZE 1048576 AUTOEXTEND ON NEXT 256M MAXSIZE 32000M EXTENT MANAGEMENT LOCAL UNIFORM SIZE 1048576 SEGMENT SPACE MANAGEMENT AUTO;
+
+
+
+*** check DB links & gather passwords ***
+
+
+
+*** /database/cupkm_admn01/scripts/12_create_logon_triggers_upkm.sql ***
+ORA-30510: system triggers cannot be defined on the schema of SYS user 
+(but trigger in DB; maybe imported with DP)
+
+
+
+*** revoke privs ***
+-- lxorafinm03
+@/database/fdlzm_admn01/scripts/revoke_sys_privs_fdlzm.sql
+REVOKE CREATE PROCEDURE FROM "FDLZ"
+*
+ERROR at line 1:
+ORA-01952: system privileges not granted to 'FDLZ' 
+
+
+
+*** idevt - SB - 11g ***
+ORA-32004: obsolete or deprecated parameter(s) specified for RDBMS instance
+NAME                                     DISPLAY_VALUE
+---------------------------------------- ----------------------------------------------------------------------------------------------------
+audit_file_dest                          /database/idevt_admn01/admin/audit/
+audit_trail                              db
+background_dump_dest                     /database/idevt_admn01/admin/diag/rdbms/idevt/idevt/trace
+compatible                               11.2.0.4.0
+control_files                            /database/idevt_redo02/oractl/control02.ctl
+control_files                            /database/idevt_redo01/oractl/control01.ctl
+db_block_size                            8192
+db_domain
+db_files                                 210
+db_name                                  IDEVT
+diagnostic_dest                          /database/idevt_admn01/admin/
+dispatchers                              (PROTOCOL=TCP) (SERVICE=bpadXDB)
+enable_goldengate_replication            TRUE
+log_archive_dest_1                       LOCATION=/database/idevt_arch01/arch
+nls_date_format                          MM/DD/YYYY
+open_cursors                             800
+pga_aggregate_target                     983M
+processes                                800
+query_rewrite_enabled                    FALSE
+remote_login_passwordfile                EXCLUSIVE
+sessions                                 885
+sga_max_size                             1358M
+sga_target                               1358M
+streams_pool_size                        180M
+undo_retention                           14400
+undo_tablespace                          UNDO
+user_dump_dest                           /database/idevt_admn01/admin/diag/rdbms/idevt/idevt/trace
+utl_file_dir                             /database/idevt_admn01/admin/utldump/
+workarea_size_policy                     auto
+
+
+*** DB directories ***
+select DIRECTORY_PATH from dba_directories order by 1;
+/oratbackup/DR/idevt/rman
+/oratbackup/nonDR/idevt/dumpexp
+/oratbackup/nonDR/idevt/log
+/nomove/app/oracle/agent13c/agent_inst
+
+NEWHOST
+
+
+***
+CREATE TABLE "SYS"."LOGON_AUDIT_LOG"
+                     *
+ERROR at line 1:
+ORA-00955: name is already used by an existing object
+
+
+
+
+*** streams pool - dsrt ***
+alter system set streams_pool_size=944504832 comment='original 100M' scope=both
+BEGIN
+*
+ERROR at line 1:
+ORA-02097: parameter cannot be modified because specified value is invalid
+ORA-04033: Insufficient memory to grow pool
+ORA-06512: at line 13
+
+sga_max_size				6016M
+sga_target					6016M
+memory_target				0
+shared_pool_reserved_size	51170508
+
+
+
+*** ampd ***
+ORA-00839: SGA_TARGET cannot be modified to the specified value
+(ALTER SYSTEM RESET sga_max_size SCOPE=SPFILE; no change for sga_target)
+sga_max_size		1016M
+sga_target		 	 752M
+memory_max_target	1016M
+memory_target		   0
+
+
+*** encrypted databases - PROD ***
+-- awdp
+col "STMT" format a150
+select 'CREATE TABLESPACE '||tbs.TABLESPACE_NAME||' DATAFILE '''||
+	case
+		when dbf.FILE_NAME like '/move/idevt%' then '/database/Eidevt/'||substr(dbf.FILE_NAME,7,instr(dbf.FILE_NAME,'/',7)-7)||'/oradata'||substr(dbf.FILE_NAME,instr(dbf.FILE_NAME,'/',-1))
+		else '/database/Eidevt/idevt01/oradata/'||SUBSTR(dbf.FILE_NAME,INSTR(dbf.FILE_NAME,'/',-1)+1)||''
+	end ||
+	''' SIZE '||to_char(dbf.BYTES)||
+	case
+	when dbf.BYTES > 33554432000 then ' AUTOEXTEND ON NEXT 256M MAXSIZE '||to_char(dbf.BYTES)
+	else ' AUTOEXTEND ON NEXT 256M MAXSIZE 32000M '
+	end ||
+	'EXTENT MANAGEMENT '
+	||tbs.EXTENT_MANAGEMENT|| ' UNIFORM SIZE 1048576 SEGMENT SPACE MANAGEMENT '||tbs.SEGMENT_SPACE_MANAGEMENT||';' "STMT"
+from DBA_TABLESPACES tbs, DBA_DATA_FILES dbf,
+	(select min(FILE_ID) MIN_FILE, TABLESPACE_NAME
+	from DBA_DATA_FILES
+	group by TABLESPACE_NAME) mf
+where tbs.TABLESPACE_NAME=dbf.TABLESPACE_NAME and mf.MIN_FILE=dbf.FILE_ID
+and tbs.TABLESPACE_NAME not in ('SYSTEM','SYSAUX','USERS','UNDO','TOOLS','LOGON_AUDIT_DATA')
+order by tbs.TABLESPACE_NAME;
+
+STMT
+------------------------------------------------------------------------------------------------------------------------------------------------------
+CREATE TABLESPACE AWD_DATA DATAFILE '/database/awdp01/oradata/awd_data01.dbf' SIZE 9437184000 AUTOEXTEND ON NEXT 256M MAXSIZE 32000M EXTENT MANAGEMENT
+
+STMT
+------------------------------------------------------------------------------------------------------------------------------------------------------
+CREATE TABLESPACE AWD_DATA DATAFILE '/database/Eawdp/awdp01/oradata/awd_data01.dbf' SIZE 9437184000 AUTOEXTEND ON NEXT 256M MAXSIZE 32000M EXTENT MANA
+
+-- add other data files
+select case
+	when dbf.FILE_NAME like '/move/idevt/exports/oradata/%' then 'ALTER TABLESPACE '||tbs.TABLESPACE_NAME||' ADD DATAFILE '''||replace(dbf.FILE_NAME,'/move/idevt/exports/oradata/','/database/Eidevt/idevt01/oradata/')||''' SIZE '||to_char(dbf.BYTES)||
+		case
+		when dbf.BYTES > 33554432000 then ' AUTOEXTEND ON NEXT 256M MAXSIZE '||to_char(dbf.BYTES)
+		else ' AUTOEXTEND ON NEXT 256M MAXSIZE 32000M '
+		end
+	when dbf.FILE_NAME like '/move/idevt%' then 'ALTER TABLESPACE '||tbs.TABLESPACE_NAME||' ADD DATAFILE '''||'/database/Eidevt/'||substr(dbf.FILE_NAME,7,instr(dbf.FILE_NAME,'/',7)-7)||'/oradata'||substr(dbf.FILE_NAME,instr(dbf.FILE_NAME,'/',-1))||''' SIZE '||to_char(dbf.BYTES)||
+		case
+		when dbf.BYTES > 33554432000 then ' AUTOEXTEND ON NEXT 256M MAXSIZE '||to_char(dbf.BYTES)
+		else ' AUTOEXTEND ON NEXT 256M MAXSIZE 32000M '
+		end
+--	when dbf.FILE_NAME like '/move/idevt%' then 'ALTER TABLESPACE '||tbs.TABLESPACE_NAME||' ADD DATAFILE '''||replace(dbf.FILE_NAME,'/move/','/database/E')||''' SIZE '||to_char(dbf.BYTES)||
+--		case
+--		when dbf.BYTES > 33554432000 then ' AUTOEXTEND ON NEXT 256M MAXSIZE '||to_char(dbf.BYTES)
+--		else ' AUTOEXTEND ON NEXT 256M MAXSIZE 32000M '
+--		end
+	else 'ALTER TABLESPACE '||tbs.TABLESPACE_NAME||' ADD DATAFILE ''/database/Eidevt/idevt01/oradata/'||SUBSTR(dbf.FILE_NAME,INSTR(dbf.FILE_NAME,'/',-1)+1)||'x'' SIZE '||to_char(dbf.BYTES)||
+		case
+		when dbf.BYTES > 33554432000 then ' AUTOEXTEND ON NEXT 256M MAXSIZE '||to_char(dbf.BYTES)
+		else ' AUTOEXTEND ON NEXT 256M MAXSIZE 32000M '
+		end
+	end ||';' "STMT"
+from DBA_TABLESPACES tbs, DBA_DATA_FILES dbf
+where tbs.TABLESPACE_NAME=dbf.TABLESPACE_NAME and (dbf.FILE_ID, tbs.TABLESPACE_NAME) not in
+	(select min(FILE_ID) MIN_FILE, TABLESPACE_NAME
+	from DBA_DATA_FILES
+	group by TABLESPACE_NAME)
+and tbs.TABLESPACE_NAME not in ('SYSTEM','SYSAUX','USERS','UNDO','TOOLS')
+order by 1;
+
+STMT
+---------------------------------------------------------------------------------------------------------------------------------------------
+ALTER TABLESPACE AWD_DATA ADD DATAFILE '/database/awdp01/oradata/awd_data02.dbf' SIZE 10485760000 AUTOEXTEND ON NEXT 256M MAXSIZE 32000M ;
+
+STMT
+------------------------------------------------------------------------------------------------------------------------------------------------
+ALTER TABLESPACE AWD_DATA ADD DATAFILE '/database/Eawdp/awdp01/oradata/awd_data02.dbf' SIZE 10485760000 AUTOEXTEND ON NEXT 256M MAXSIZE 32000M ;
+
+select case substr(dtf.FILE_NAME,-6,2)
+	when '01' then 'ALTER DATABASE TEMPFILE ''/database/E'||lower(vdb.name)||'/'||lower(vdb.name)||'01/oradata'||substr(dtf.FILE_NAME,instr(dtf.FILE_NAME,'/',-1))||''' RESIZE '||dtf.BYTES||';'
+	else 
+		case
+			when dtf.FILE_NAME like '/move/idwptmp/%' then 'ALTER TABLESPACE TEMP ADD TEMPFILE '''||'/database/E'||lower(vdb.name)||'/'||lower(vdb.name)||'01/oradata'||substr(dtf.FILE_NAME,instr(dtf.FILE_NAME,'/',-1))||''' SIZE '||dtf.BYTES||';'
+			else 'ALTER TABLESPACE TEMP ADD TEMPFILE '''||replace(dtf.FILE_NAME,'/move/','/database/E')||''' SIZE '||dtf.BYTES||';'
+			end
+	end "STMT"
+from DBA_TEMP_FILES dtf, V$DATABASE vdb
+where dtf.TABLESPACE_NAME='TEMP';
+
+STMT
+---------------------------------------------------------------------------------------
+ALTER DATABASE TEMPFILE '/database/Eawdp01/oradata/temp01.dbf' RESIZE 11534336000;
+
+STMT
+----------------------------------------------------------------------------------------
+ALTER DATABASE TEMPFILE '/database/Eawdp/awdp01/oradata/temp01.dbf' RESIZE 11534336000;
+
+-- idevt
+CREATE TEMPORARY TABLESPACE temp_demo
+TEMPFILE '/move/idevt01/oradata/temp_demo01.dbf' SIZE 5M AUTOEXTEND OFF;
+
+select 'CREATE TEMPORARY TABLESPACE '||tbs.TABLESPACE_NAME||' TEMPFILE '''||replace(dbf.FILE_NAME,'/move/','/database/Eidevt/')||
+	case AUTOEXTENSIBLE
+	when 'ON' then ''' SIZE '||BYTES||' AUTOEXTEND ON NEXT '||INCREMENT_BY||' MAXSIZE '||MAXBYTES||';'
+		else ''' SIZE '||BYTES||';'
+	end "STMT"
+from DBA_TABLESPACES tbs, DBA_TEMP_FILES dbf,
+	(select min(FILE_ID) MIN_FILE, TABLESPACE_NAME
+	from DBA_TEMP_FILES
+	group by TABLESPACE_NAME) mf
+where tbs.TABLESPACE_NAME=dbf.TABLESPACE_NAME and mf.MIN_FILE=dbf.FILE_ID
+and tbs.TABLESPACE_NAME!='TEMP'
+order by 1;
+
+STMT
+------------------------------------------------------------------------------------------------------------------------------------------------------
+CREATE TEMPORARY TABLESPACE TEMP_DEMO TEMPFILE '/database/Eidevt01/oradata/temp_demo01.dbf' SIZE 5242880;
+
+STMT
+------------------------------------------------------------------------------------------------------------------------------------------------------
+CREATE TEMPORARY TABLESPACE TEMP_DEMO TEMPFILE '/database/Eidevt/idevt01/oradata/temp_demo01.dbf' SIZE 5242880;
+
+ALTER TABLESPACE TEMP_DEMO ADD TEMPFILE '/move/idevt01/oradata/temp_demo02.dbf' SIZE 5M AUTOEXTEND OFF;
+
+select 'ALTER TABLESPACE '||tbs.TABLESPACE_NAME||' ADD TEMPFILE '''||replace(dbf.FILE_NAME,'/move/','/database/Eidevt/')||''' SIZE '||BYTES||';' "STMT"
+from DBA_TABLESPACES tbs, DBA_TEMP_FILES dbf
+where tbs.TABLESPACE_NAME=dbf.TABLESPACE_NAME and (dbf.FILE_ID, tbs.TABLESPACE_NAME) not in
+	(select min(FILE_ID) MIN_FILE, TABLESPACE_NAME
+	from DBA_TEMP_FILES
+	group by TABLESPACE_NAME)
+and tbs.TABLESPACE_NAME!='TEMP'
+order by 1;
+
+STMT
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ALTER TABLESPACE TEMP_DEMO ADD TEMPFILE '/database/Eidevt01/oradata/temp_demo02.dbf' SIZE 5242880;
+
+STMT
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ALTER TABLESPACE TEMP_DEMO ADD TEMPFILE '/database/Eidevt/idevt01/oradata/temp_demo02.dbf' SIZE 5242880;
+
+select 'ALTER TABLESPACE '||tbs.TABLESPACE_NAME||' ADD DATAFILE '''||replace(FILE_NAME,'/move/','/database/Eidevt/')||''' SIZE '||dbf.BYTES||';' "STMT"
+from DBA_TABLESPACES tbs, DBA_DATA_FILES dbf
+where tbs.TABLESPACE_NAME=dbf.TABLESPACE_NAME
+and tbs.TABLESPACE_NAME='UNDO'
+order by 1;
+
+STMT
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ALTER TABLESPACE UNDO ADD DATAFILE '/database/Eidevt01/oradata/undo01.dbf' SIZE 104857600;
+
+STMT
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ALTER TABLESPACE UNDO ADD DATAFILE '/database/Eidevt/idevt01/oradata/undo01.dbf' SIZE 104857600;
+
+ALTER DATABASE DATAFILE '/move/idevt01/oradata/undo01.dbf' RESIZE 300M;
+
+select case
+	when SHORT_NAME='undo01.dbf' then
+		case
+			when BYTES > 209715200 then 'ALTER DATABASE DATAFILE '''||replace(FILE_NAME,'/move/','/database/Eidevt/')||''' RESIZE '||BYTES||';'
+			else '-- undo01.dbf is less than 200 MB'
+		end
+	else 'ALTER TABLESPACE '||TABLESPACE_NAME||' ADD DATAFILE '''||replace(FILE_NAME,'/move/','/database/Eidevt/')||''' SIZE '||BYTES||';'
+end "STMT"
+from
+	(select dbf.FILE_NAME, substr(dbf.FILE_NAME,instr(dbf.FILE_NAME,'/',-1)+1) "SHORT_NAME",
+	 tbs.TABLESPACE_NAME, dbf.BYTES
+	 from DBA_TABLESPACES tbs, DBA_DATA_FILES dbf
+	 where tbs.TABLESPACE_NAME=dbf.TABLESPACE_NAME
+	 and tbs.TABLESPACE_NAME='UNDO')
+order by 1;
+
+STMT
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ALTER DATABASE DATAFILE '/database/Eidevt01/oradata/undo01.dbf' RESIZE 314572800;
+
+STMT
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ALTER DATABASE DATAFILE '/database/Eidevt/idevt01/oradata/undo01.dbf' RESIZE 314572800;
+
+
+*** ORA-02437: cannot validate (GGTEST.QUOTA_AIX_PK) - primary key violated ***
+-- wstodsp (uxorap01)
+ADD CONSTRAINT quota_aix_pk
+               *
+ERROR at line 2:
+ORA-02437: cannot validate (GGTEST.QUOTA_AIX_PK) - primary key violated
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!CRITICAL ERROR!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+create table ggtest.quota_aix as
+select username, tablespace_name,
+  case	when max_bytes = -1 then 'UNLIMITED'
+	else to_char(max_bytes)
+  end "QUOTA"
+from dba_ts_quotas
+where username not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+UNION
+select rp.grantee, ts.tablespace_name, 'UNLIMITED'
+from dba_sys_privs sp, dba_roles dr, dba_role_privs rp, dba_tablespaces ts
+where sp.grantee=dr.role and rp.granted_role=dr.role
+and sp.privilege='UNLIMITED TABLESPACE'
+and ts.contents not in ('TEMPORARY','UNDO')
+and rp.grantee not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+UNION
+select sp.grantee, ts.tablespace_name, 'UNLIMITED'
+from dba_sys_privs sp, dba_tablespaces ts
+where sp.privilege='UNLIMITED TABLESPACE'
+and ts.contents not in ('TEMPORARY','UNDO')
+and sp.grantee not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+and sp.grantee not in ('ADM_PARALLEL_EXECUTE_TASK','APEX_ADMINISTRATOR_ROLE','APEX_GRANTS_FOR_NEW_USERS_ROLE','AQ_ADMINISTRATOR_ROLE','AQ_USER_ROLE','AUDIT_ADMIN','AUDIT_VIEWER','AUTHENTICATEDUSER','CAPTURE_ADMIN','CDB_DBA','CONNECT','CSW_USR_ROLE','CTXAPP','DATAPUMP_EXP_FULL_DATABASE','DATAPUMP_IMP_FULL_DATABASE','DBA','DBFS_ROLE','DELETE_CATALOG_ROLE','DV_ACCTMGR','DV_ADMIN','DV_AUDIT_CLEANUP','DV_DATAPUMP_NETWORK_LINK','DV_GOLDENGATE_ADMIN','DV_GOLDENGATE_REDO_ACCESS','DV_MONITOR','DV_OWNER','DV_PATCH_ADMIN','DV_PUBLIC','DV_REALM_OWNER','DV_REALM_RESOURCE','DV_SECANALYST','DV_STREAMS_ADMIN','DV_XSTREAM_ADMIN','EJBCLIENT','EM_EXPRESS_ALL','EM_EXPRESS_BASIC','EXECUTE_CATALOG_ROLE','EXP_FULL_DATABASE','GATHER_SYSTEM_STATISTICS','GDS_CATALOG_SELECT','GLOBAL_AQ_USER_ROLE','GSMADMIN_ROLE','GSMUSER_ROLE','GSM_POOLADMIN_ROLE','HS_ADMIN_EXECUTE_ROLE','HS_ADMIN_ROLE','HS_ADMIN_SELECT_ROLE','IMP_FULL_DATABASE','JAVADEBUGPRIV','JAVAIDPRIV','JAVASYSPRIV','JAVAUSERPRIV','JAVA_ADMIN','JAVA_DEPLOY','JMXSERVER','LBAC_DBA','LOGSTDBY_ADMINISTRATOR','OEM_ADVISOR','OEM_MONITOR','OLAP_DBA','OLAP_USER','OLAP_XS_ADMIN','OPTIMIZER_PROCESSING_RATE','ORDADMIN','PDB_DBA','PROVISIONER','RECOVERY_CATALOG_OWNER','RECOVERY_CATALOG_USER','RESOURCE','SCHEDULER_ADMIN','SELECT_CATALOG_ROLE','SPATIAL_CSW_ADMIN','SPATIAL_WFS_ADMIN','WFS_USR_ROLE','WM_ADMIN_ROLE','XDBADMIN','XDB_SET_INVOKER','XDB_WEBSERVICES','XDB_WEBSERVICES_OVER_HTTP','XDB_WEBSERVICES_WITH_PUBLIC','XS_CACHE_ADMIN','XS_NAMESPACE_ADMIN','XS_RESOURCE','XS_SESSION_ADMIN','PUBLIC','SECURITY_ADMIN_ROLE','SQLTUNE','APP_DBA_ROLE','APP_DEVELOPER_ROLE','PROD_DBA_ROLE');
+USERNAME                       TABLESPACE_NAME                QUOTA
+------------------------------ ------------------------------ -----------
+INF_USER                       WSTODS_TBLSP                   104857600
+INF_USER                       WSTODS_TBLSP                   UNLIMITED
+
+-- 1st query
+USERNAME                       TABLESPACE_NAME                QUOTA
+------------------------------ ------------------------------ ----------------
+INF_USER                       WSTODS_TBLSP                   104857600
+
+-- 3rd query
+GRANTEE                        TABLESPACE_NAME                'UNLIMITE
+------------------------------ ------------------------------ ---------
+INF_USER                       GGS                            UNLIMITED
+INF_USER                       LOGON_AUDIT_DATA               UNLIMITED
+INF_USER                       SYSAUX                         UNLIMITED
+INF_USER                       SYSTEM                         UNLIMITED
+INF_USER                       TOOLS                          UNLIMITED
+INF_USER                       USERS                          UNLIMITED
+INF_USER                       WSTODS_TBLSP                   UNLIMITED
+
+ALTER TABLE ggtest.quota_aix
+ADD CONSTRAINT quota_aix_pk
+PRIMARY KEY (username, tablespace_name)
+using index (CREATE INDEX ggtest.quota_aix_pk_ix ON ggtest.quota_aix (username, tablespace_name));
+
+-- create quotas
+SELECT 'alter user "'|| dtb.owner || '" quota UNLIMITED on ' || dtb.tablespace_name || ';' "STMT"
+FROM dba_tables dtb, dba_tablespaces dts
+WHERE dtb.tablespace_name=dts.tablespace_name and dtb.tablespace_name is not null and dtb.owner='INF_USER'
+	UNION
+SELECT 'alter user "'|| din.owner || '" quota UNLIMITED on ' || din.tablespace_name || ';'
+FROM dba_indexes din, dba_tablespaces dts
+WHERE din.tablespace_name=dts.tablespace_name and din.tablespace_name is not null and din.owner='INF_USER'
+	UNION
+select 'alter user "'|| dtq.username ||'"'||
+	case
+		when dtq.max_bytes = -1 then ' quota UNLIMITED'
+		else ' quota '||to_char(dtq.max_bytes)
+	end ||
+  ' on ' || dtq.tablespace_name || ';'
+from dba_ts_quotas dtq, dba_tablespaces dts
+WHERE dtq.tablespace_name=dts.tablespace_name and dtq.tablespace_name is not null and dtq.username='INF_USER';
+STMT
+---------------------------------------------------------
+alter user "INF_USER" quota 104857600 on WSTODS_TBLSP;
+alter user "INF_USER" quota UNLIMITED on USERS;
+
+
+*** users & tablespaces starting with number ***
+-- creating tablespaces
+select 'CREATE TABLESPACE "'||tbs.TABLESPACE_NAME||'" DATAFILE '''||
+	case
+		when dbf.FILE_NAME like '/move/${DBNAME}%' then '/database/'||substr(dbf.FILE_NAME,7,instr(dbf.FILE_NAME,'/',7)-7)||'/oradata'||substr(dbf.FILE_NAME,instr(dbf.FILE_NAME,'/',-1))
+		else '/database/${DBNAME}01/oradata/'||SUBSTR(dbf.FILE_NAME,INSTR(dbf.FILE_NAME,'/',-1)+1)||''
+	end ||
+	''' SIZE '||to_char(dbf.BYTES)||
+	case
+	when dbf.BYTES > 33554432000 then ' AUTOEXTEND ON NEXT 256M MAXSIZE '||to_char(dbf.BYTES)
+	else ' AUTOEXTEND ON NEXT 256M MAXSIZE 32000M '
+	end ||
+	'EXTENT MANAGEMENT '
+	||tbs.EXTENT_MANAGEMENT|| ' UNIFORM SIZE 1048576 SEGMENT SPACE MANAGEMENT '||tbs.SEGMENT_SPACE_MANAGEMENT||';' "STMT"
+from DBA_TABLESPACES tbs, DBA_DATA_FILES dbf,
+	(select min(FILE_ID) MIN_FILE, TABLESPACE_NAME
+	from DBA_DATA_FILES
+	group by TABLESPACE_NAME) mf
+where tbs.TABLESPACE_NAME=dbf.TABLESPACE_NAME and mf.MIN_FILE=dbf.FILE_ID
+and tbs.TABLESPACE_NAME not in ('SYSTEM','SYSAUX','USERS','UNDO','TOOLS','LOGON_AUDIT_DATA')
+order by tbs.TABLESPACE_NAME;
+
+drop tablespace "4086VCNTR" including contents and datafiles;
+drop tablespace ggs including contents and datafiles;
+
+CREATE TABLESPACE "4086VCNTR" DATAFILE '/database/prod01/oradata/4086VCNTR.dbf' SIZE 629145600 AUTOEXTEND ON NEXT 256M MAXSIZE 32000M EXTENT MANAGEMENT LOCAL UNIFORM SIZE 1048576 SEGMENT SPACE MANAGEMENT AUTO;
+CREATE TABLESPACE "GGS" DATAFILE '/database/prod01/oradata/ggs01.dbf' SIZE 524288000 AUTOEXTEND ON NEXT 256M MAXSIZE 32000M EXTENT MANAGEMENT LOCAL UNIFORM SIZE 1048576 SEGMENT SPACE MANAGEMENT AUTO;
+
+drop tablespace ggs including contents and datafiles;
+Tablespace dropped.
+
+WITH pt AS
+	(select tablespace_name from dba_tablespaces where contents='PERMANENT'),
+tt AS
+	(select tablespace_name from dba_tablespaces where contents='TEMPORARY'),
+us AS
+	(select name, password, translate(password,'0123456789ABCDEF','----------------') dashes from user$)
+select 'CREATE USER "'||du.username||'" IDENTIFIED BY VALUES '''||
+	DECODE(us.dashes,'----------------',us.password,'S:0F9DDB9E51A96D66D8754952C4F1D987FE5E527F5E3BD9C7C5F08983B532;T:5BB9FF165DF9261D3D9B0A99BF37BD5985E8A0A59D42046185BFF0326950CB3A8FBF7E4A39EBDA3BF521F2D28D3C31AB27ABA24A19F43C3F1B5CD3BC0421A1DA0920DC6A88647656CAC1E87CC8937F0D;DE50D6C930ACAF6E')||
+	''' DEFAULT TABLESPACE "'||NVL(pt.tablespace_name,'USERS')||'"'|| 
+	' TEMPORARY TABLESPACE "'||NVL(tt.tablespace_name,'TEMP')||'"'||
+	' PROFILE '||du.profile||';' "STMT"
+from dba_users du join us on du.username=us.name
+	full outer join pt on du.default_tablespace=pt.tablespace_name
+	full outer join tt on du.temporary_tablespace=tt.tablespace_name
+where du.AUTHENTICATION_TYPE!='EXTERNAL' and du.username='4086VCNTR';
+
+SELECT 'alter user "'|| dtb.owner || '" quota UNLIMITED on "' || dtb.tablespace_name || '";' "STMT"
+FROM dba_tables dtb, dba_tablespaces dts
+WHERE dtb.tablespace_name=dts.tablespace_name and dtb.tablespace_name is not null and dtb.owner NOT IN ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+	UNION
+SELECT 'alter user "'|| din.owner || '" quota UNLIMITED on "' || din.tablespace_name || '";'
+FROM dba_indexes din, dba_tablespaces dts
+WHERE din.tablespace_name=dts.tablespace_name and din.tablespace_name is not null and din.owner NOT IN ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+	UNION
+select 'alter user "'|| dtq.username ||'"'||
+	case
+		when dtq.max_bytes = -1 then ' quota UNLIMITED'
+		else ' quota '||to_char(dtq.max_bytes)
+	end ||
+  ' on "' || dtq.tablespace_name || '";'
+from dba_ts_quotas dtq, dba_tablespaces dts
+WHERE dtq.tablespace_name=dts.tablespace_name and dtq.tablespace_name is not null and dtq.username NOT IN ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS');
+alter user "4086VCNTR" quota 52428800 on "USERS";
+alter user "4086VCNTR" quota UNLIMITED on "4086VCNTR";
+alter user "4086VCNTR" quota UNLIMITED on "USRTMP";
+
+-- datapump
+select owner, count(*) from dba_tables where owner='4086VCNTR' group by owner;
+OWNER                            COUNT(*)
+------------------------------ ----------
+4086VCNTR                             804
+(none in DP export log)
+
+select case
+	when username!=upper(username) then '\\"'||username||'\\"'
+	else username
+	end "STMT"
+select '\\"'||username||'\\"' "STMT"
+from dba_users where username not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS');
+
+set serveroutput on
+DECLARE
+  CURSOR c1 IS
+	select '\\"'||username||'\\"' "STMT"
+	from dba_users where username not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS');
+  vOwner	VARCHAR2(30);
+  x			PLS_INTEGER;
+BEGIN
+  DBMS_OUTPUT.PUT('SCHEMAS=');
+  
+  x := 1;
+  OPEN c1;
+  LOOP
+    FETCH c1 INTO vOwner;
+	EXIT WHEN c1%NOTFOUND;
+	  IF x = 1 THEN
+        DBMS_OUTPUT.PUT(vOwner);
+      ELSE
+        DBMS_OUTPUT.PUT(','||vOwner);
+      END IF;
+	  x := x + 1;
+  END LOOP;
+  DBMS_OUTPUT.NEW_LINE;
+  CLOSE c1;
+END;
+/
+
+-- idevt (uxs33)
+CREATE TABLESPACE "4086VCNTR" DATAFILE '/move/idevt01/oradata/4086VCNTR.dbf' SIZE 629145600 AUTOEXTEND ON NEXT 256M MAXSIZE 32000M EXTENT MANAGEMENT LOCAL UNIFORM SIZE 1048576 SEGMENT SPACE MANAGEMENT AUTO;
+CREATE USER "4086VCNTR" IDENTIFIED BY This1Works DEFAULT TABLESPACE "4086VCNTR" TEMPORARY TABLESPACE "TEMP" PROFILE APP_PROFILE;
+alter user "4086VCNTR" quota 52428800 on "USERS";
+alter user "4086VCNTR" quota UNLIMITED on "4086VCNTR";
+create table "4086VCNTR".table1 as select file_name from dba_data_files;
+
+select * from 4086vcntr.table1
+              *
+ERROR at line 1:
+ORA-00903: invalid table name
+(must use quotes)
+(same as prod on uxp33)
+
+expdp \"/ AS SYSDBA\" parfile=/backup_uxs33/dpdump/datapump/idevt/expdp_idevt.par
+
+-- expdp_idevt.par
+SCHEMAS=\"4086VCNTR\",...
+-- expdp_prod.par
+SCHEMAS=\"APPCNOJIW\",...,\"4086VCNTR\",...
+
+-- uxs33
+rm /backup_uxs33/dpdump/datapump/idevt/idevt*.dmp
+cp /backup_uxs33/dpdump/datapump/idevt/expdp_idevt.par /backup_uxs33/dpdump/datapump/idevt/expdp_idevt2.par
+vi /backup_uxs33/dpdump/datapump/idevt/expdp_idevt2.par
+LOGFILE=idevt2.log
+SCHEMAS=\"GGTEST\",\"4086VCNTR\",...
+
+expdp \"/ AS SYSDBA\" parfile=/backup_uxs33/dpdump/datapump/idevt/expdp_idevt2.par
+. . exported "4086VCNTR"."TABLE1"                        5.585 KB      14 rows
+
+rm /backup_uxs33/dpdump/datapump/idevt/idevt*.dmp
+
+col CURRENT_SCN format 99999999999990
+select CURRENT_SCN from v$database;
+    CURRENT_SCN
+---------------
+ 10954656438996
+
+expdp \"/ AS SYSDBA\" flashback_scn=10954656438996 parfile=/backup_uxs33/dpdump/datapump/idevt/expdp_idevt2.par
+. . exported "4086VCNTR"."TABLE1"                        5.585 KB      14 rows
+
+select count(*) from ggtest.row_count_aix where owner='4086VCNTR';
+  COUNT(*)
+----------
+       261
+
+select db.name, ins.host_name,
+  tb.owner, tb.table_name, tb.status
+from DBA_TABLES tb, v$instance ins, v$database db
+where tb.IOT_TYPE is null and owner='4086VCNTR'
+and (tb.owner, tb.table_name) not in (select owner, table_name from dba_external_tables);
+261 rows selected.
+
+-- table counts before 4086VCNTR
+select owner, count(*) from ggtest.row_count_aix 
+where owner in ('APPCINDRJ','APPCINK1S','APPCINJAT','CAIROADMIN','CNO3YU','CIN1SA','APPCPAMH6','APPCNOF88','APPCINASM','CINJAT')
+group by owner order by 1;
+OWNER                            COUNT(*)
+------------------------------ ----------
+CAIROADMIN                              1
+CIN1SA                                280
+CNO3YU                                 24
+
+-- table counts after 4086VCNTR
+select owner, count(*) from ggtest.row_count_aix 
+where owner in ('CINDRJ','DBLINK','APPCNOUV2','CCMTRADE','CAIROSTAGE','CNOW5R','CINXJN','APPCIAYKW','APPCNO3YU','APPCINYC1')
+group by owner order by 1;
+OWNER                            COUNT(*)
+------------------------------ ----------
+CAIROSTAGE                             28
+CCMTRADE                                1
+CINDRJ                                 21
+CINXJN                                  2
+CNOW5R                                 23
+
+-- is ADMIN# causing problems?
+select count(*) from ggtest.row_count_aix where owner='ADMIN#';
+  COUNT(*)
+----------
+         0
+		 
+select owner, count(*) from ggtest.row_count_aix 
+where owner in ('APPCIN9U2','APPCOG77O','APPCIN1SA','APPCINDRJ','APPCINK1S','APPCINJAT','CAIROADMIN','CNO3YU','CIN1SA','APPCPAMH6','APPCNOF88','APPCINASM','CINJAT')
+group by owner order by 1;
+OWNER                            COUNT(*)
+------------------------------ ----------
+CAIROADMIN                              1
+CIN1SA                                280
+CNO3YU                                 24
+
+-- idevt
+CREATE USER "ADMIN#" IDENTIFIED BY This1Works DEFAULT TABLESPACE "USERS" TEMPORARY TABLESPACE "TEMP" PROFILE APP_PROFILE;
+alter user "ADMIN#" quota 52428800 on "USERS";
+create table "ADMIN#".table1 as select file_name from dba_data_files;
+
+cp /backup_uxs33/dpdump/datapump/idevt/expdp_idevt.par /backup_uxs33/dpdump/datapump/idevt/expdp_idevt_test1.par
+vi /backup_uxs33/dpdump/datapump/idevt/expdp_idevt_test1.par
+SCHEMAS=\"ADMIN#\",\"4086VCNTR\",...
+
+rm /backup_uxs33/dpdump/datapump/idevt/idevt*.dmp
+expdp \"/ AS SYSDBA\" parfile=/backup_uxs33/dpdump/datapump/idevt/expdp_idevt_test1.par
+ORA-39001: invalid argument value
+ORA-39170: Schema expression '"ADMIN' does not correspond to any schemas.
+
+-- exclude ADMIN#
+select '\\"'||username||'\\"' "STMT"
+	from dba_users where username not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+	and username!='ADMIN#'
+	order by 1;
+	
+	
+*** DB parameters (undo) ***
+-- set string parameters using single quotes
+select 'ALTER SYSTEM SET ' || name || '=''' || display_value || ''' SCOPE=SPFILE;' "STMT"
+from v$spparameter
+where isspecified='TRUE' and 
+name in 
+('nls_date_format','db_securefile','parallel_min_time_threshold','query_rewrite_enabled','query_rewrite_integrity','star_transformation_enabled','workarea_size_policy','utl_file_dir');
+
+-- set non-string parameters
+select 'ALTER SYSTEM SET ' || name || '=' || display_value || ' SCOPE=SPFILE;' "STMT"
+from v$spparameter
+where isspecified='TRUE' and 
+name in ('optimizer_secure_view_merging','open_cursors','optimizer_dynamic_sampling','processes','sessions','global_names','undo_retention');
+
+-- set data file max with extra for CDB
+select 'ALTER SYSTEM SET ' || name || '=' || to_char(to_number(value)+10) || ' SCOPE=SPFILE;' "STMT"
+from v\$spparameter
+where isspecified='TRUE' and name='db_files';
+
+-- set parameters above template values
+select 'ALTER SYSTEM SET ' || name || '=' || value || ' SCOPE=SPFILE;' "STMT"
+from v$spparameter
+where isspecified='TRUE' and name='parallel_max_servers' and to_number(value)>8;
+select 'ALTER SYSTEM SET ' || name || '=' || value || ' SCOPE=SPFILE;' "STMT"
+from v$spparameter
+where isspecified='TRUE' and name='undo_retention' and to_number(value)>8;
+
+
+*** temp files - encrypted disks - cigfdsp ***
+select case substr(dtf.FILE_NAME,-6,2)
+	when '01' then 'ALTER DATABASE TEMPFILE ''/database/E'||lower(vdb.name)||'/'||lower(vdb.name)||'01/oradata'||substr(dtf.FILE_NAME,instr(dtf.FILE_NAME,'/',-1))||''' RESIZE '||dtf.BYTES||';'
+	else 
+		case
+			when dtf.FILE_NAME like '/move/idwptmp/%' then 'ALTER TABLESPACE TEMP ADD TEMPFILE '''||'/database/E'||lower(vdb.name)||'/'||lower(vdb.name)||'01/oradata'||substr(dtf.FILE_NAME,instr(dtf.FILE_NAME,'/',-1))||''' SIZE '||dtf.BYTES||';'
+			else 'ALTER TABLESPACE TEMP ADD TEMPFILE '''||replace(dtf.FILE_NAME,'/move/','/database/E'||lower(vdb.name)||'/')||''' SIZE '||dtf.BYTES||';'
+			end
+	end "STMT"
+from DBA_TEMP_FILES dtf, V$DATABASE vdb
+where dtf.TABLESPACE_NAME='TEMP';
+
+
+*** ACL errors ***
+
+DECLARE
+  l_last_acl       dba_network_acls.acl%TYPE                 := '~';
+  l_last_principal dba_network_acl_privileges.principal%TYPE := '~';
+  l_last_host      dba_network_acls.host%TYPE                := '~';
+
+BEGIN
+  FOR i IN (SELECT a.acl,
+                   a.host,
+                   a.lower_port,
+                   a.upper_port,
+                   b.principal,
+                   b.privilege,
+                   b.is_grant,
+                   b.start_date,
+                   b.end_date
+            FROM   dba_network_acls a
+                   JOIN dba_network_acl_privileges b ON a.acl = b.acl
+            ORDER BY a.acl, a.host, a.lower_port, a.upper_port)
+  LOOP
+    IF l_last_host <> i.host||':'||i.lower_port||':'||i.upper_port THEN
+	  IF i.host='smtp.conseco.com' THEN
+        DBMS_OUTPUT.put_line('BEGIN');
+        DBMS_OUTPUT.put_line('  DBMS_NETWORK_ACL_ADMIN.assign_acl (');
+        DBMS_OUTPUT.put_line('    acl         => ''' || i.acl || ''',');
+        DBMS_OUTPUT.put_line('    host        => ''smtp.conseco.ad'',');
+        DBMS_OUTPUT.put_line('    lower_port  => ' || NVL(TO_CHAR(i.lower_port),'NULL') || ',');
+        DBMS_OUTPUT.put_line('    upper_port  => ' || NVL(TO_CHAR(i.upper_port),'NULL') || ');');
+        DBMS_OUTPUT.put_line('  COMMIT;');
+        DBMS_OUTPUT.put_line('END;');
+        DBMS_OUTPUT.put_line('/');
+        DBMS_OUTPUT.put_line(' ');
+      ELSE
+        DBMS_OUTPUT.put_line('BEGIN');
+        DBMS_OUTPUT.put_line('  DBMS_NETWORK_ACL_ADMIN.assign_acl (');
+        DBMS_OUTPUT.put_line('    acl         => ''' || i.acl || ''',');
+        DBMS_OUTPUT.put_line('    host        => ''' || i.host || ''',');
+        DBMS_OUTPUT.put_line('    lower_port  => ' || NVL(TO_CHAR(i.lower_port),'NULL') || ',');
+        DBMS_OUTPUT.put_line('    upper_port  => ' || NVL(TO_CHAR(i.upper_port),'NULL') || ');');
+        DBMS_OUTPUT.put_line('  COMMIT;');
+        DBMS_OUTPUT.put_line('END;');
+        DBMS_OUTPUT.put_line('/');
+        DBMS_OUTPUT.put_line(' ');
+      END IF;
+      l_last_host := i.host||':'||i.lower_port||':'||i.upper_port;
+    END IF;
+  END LOOP;
+END;
+/
+
+
+*** GG parameters ***
+alter system set "_log_read_buffers" = 64 scope=both;
+--alter system set '_log_read_buffers' = 64 scope=both;
+alter system set "_log_read_buffers"=64 scope=both;
+ORA-02095: specified initialization parameter cannot be modified
+
+alter system set "_log_read_buffers"=64 scope=spfile;
+System altered.
+
+
+*** triggers ***
+
+select owner, trigger_name, status
+from dba_triggers
+where owner not in 
+('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+order by 1,2;
+
+select owner, trigger_name, count(*)
+from dba_triggers
+where owner not in 
+('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+group by owner, trigger_name
+having count(*)>1
+order by 1,2;
+
+-- linux
+insert into ggtest.triggers_linux
+select owner, trigger_name, status
+from dba_triggers
+where owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS');
+commit;
+
+select aix.OWNER||'.'||aix.trigger_name "TRIGGER_NAME", aix.STATUS "AIX", lx.STATUS "LINUX"
+from ggtest.triggers_linux lx full outer join ggtest.triggers_aix aix
+  on aix.OWNER=lx.OWNER and aix.trigger_name=lx.trigger_name
+where lx.STATUS!=aix.STATUS
+order by aix.OWNER, aix.trigger_name;
+
+
+*** initialization parameters ***
+
+select name, value
+from v$parameter
+where name not like '%dest%'
+and name not in ('compatible','control_files','db_name','db_unique_name','dg_broker_config_file1','dg_broker_config_file2','instance_name','optimizer_features_enable','os_authent_prefix','service_names','spfile')
+and value is not null
+order by 1,2;
+
+-- linux
+insert into ggtest.parameters_linux
+select name, value
+from v$parameter
+where name not like '%dest%'
+and name not in ('compatible','control_files','db_name','db_unique_name','dg_broker_config_file1','dg_broker_config_file2','instance_name','optimizer_features_enable','os_authent_prefix','service_names','spfile')
+and value is not null;
+commit;
+
+col "PARAM_NAME" format a40
+col "AIX-VALUE" format a50
+col "LINUX-VALUE" format a50
+select aix.name "PARAM_NAME", aix.value "AIX-VALUE", lx.value "LINUX-VALUE"
+from ggtest.parameters_linux lx full outer join ggtest.parameters_aix aix
+  on aix.name=lx.name
+where lx.value!=aix.value
+order by aix.name, aix.value;
+
+
+*** sys-gen names ***
+
+-- indexes
+select ic.table_owner||'.'||ic.table_name "TABLE", ic.column_name, di.index_type, di.uniqueness "UNIQUE", di.status, ic.descend 
+from dba_indexes di join dba_ind_columns ic
+    on di.index_name=ic.index_name
+where ic.index_name like 'SYS_%' and di.owner not in
+('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+order by 2,3,1;
+
+ADD CONSTRAINT index_sys_gen_aix_pk
+               *
+ERROR at line 2:
+ORA-02437: cannot validate (GGTEST.INDEX_SYS_GEN_AIX_PK) - primary key violated
+
+col column_name format a30
+select ic.table_owner, ic.table_name, ic.column_name, di.index_type, count(*)
+from dba_indexes di join dba_ind_columns ic
+    on di.index_name=ic.index_name
+where ic.index_name like 'SYS_%' and di.owner not in
+('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+group by ic.table_owner, ic.table_name, ic.column_name, di.index_type
+having count(*)>1
+order by 1,2,3;
+
+select ic.table_owner, ic.table_name, ic.column_name, di.index_type, di.uniqueness "UNIQUE", di.status, ic.descend 
+from dba_indexes di join dba_ind_columns ic
+    on di.index_name=ic.index_name
+where ic.index_name like 'SYS_%' 
+and ic.table_owner='CRUCIBLE'
+and ic.table_name='CWD_APPLICATION_ALIAS'
+and ic.column_name='APPLICATION_ID'
+and di.index_type='NORMAL';
+
+select owner, index_name, index_type, table_owner, table_name
+from dba_indexes where index_type='NORMAL' and table_owner='CRUCIBLE' and table_name='CWD_APPLICATION_ALIAS';
+OWNER                          INDEX_NAME                     INDEX_TYPE                  TABLE_OWNER TABLE_NAME
+------------------------------ ------------------------------ --------------------------- ----------- ------------------------------
+CRUCIBLE                       SYS_PK_10108                   NORMAL                      CRUCIBLE    CWD_APPLICATION_ALIAS
+CRUCIBLE                       SYS_IDX_SYS_CT_10109_10112     NORMAL                      CRUCIBLE    CWD_APPLICATION_ALIAS
+CRUCIBLE                       SYS_IDX_SYS_CT_10110_10113     NORMAL                      CRUCIBLE    CWD_APPLICATION_ALIAS
+
+select *
+from dba_ind_columns where index_name like 'SYS_%' and table_owner='CRUCIBLE' and table_name='CWD_APPLICATION_ALIAS' and column_name='APPLICATION_ID';
+INDEX_OWNER                    INDEX_NAME                     TABLE_OWNER                    TABLE_NAME
+------------------------------ ------------------------------ ------------------------------ ------------------------------
+COLUMN_NAME                    COLUMN_POSITION COLUMN_LENGTH CHAR_LENGTH DESC
+------------------------------ --------------- ------------- ----------- ----
+CRUCIBLE                       SYS_IDX_SYS_CT_10109_10112     CRUCIBLE                       CWD_APPLICATION_ALIAS
+APPLICATION_ID                               1            22           0 ASC
+
+CRUCIBLE                       SYS_IDX_SYS_CT_10110_10113     CRUCIBLE                       CWD_APPLICATION_ALIAS
+APPLICATION_ID                               1            22           0 ASC
+
+-- linux indexes
+insert into ggtest.index_sys_gen_linux
+select ic.table_owner, ic.table_name, ic.column_name, di.index_type, di.uniqueness, di.status, ic.descend
+from dba_indexes di join dba_ind_columns ic
+    on di.index_name=ic.index_name
+where ic.index_name like 'SYS_%' and di.owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS');
+commit;
+
+col "TABLE_NAME" format a61
+select aix.table_owner||'.'||aix.table_name "TABLE_NAME", aix.column_name, aix.index_type,
+	aix.status "AIX-VALUE", lx.status "LINUX-VALUE"
+from ggtest.index_sys_gen_linux lx full outer join ggtest.index_sys_gen_aix aix
+  on aix.table_owner=lx.table_owner and aix.table_name=lx.table_name and aix.column_name=lx.column_name and aix.index_type=lx.index_type
+where lx.status!=aix.status
+order by aix.table_owner, aix.table_name, aix.column_name, aix.index_type;
+
+-- LOBs
+select owner, table_name, column_name, tablespace_name
+from dba_lobs
+where segment_name like 'SYS_%' and owner not in 
+('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+order by owner, table_name, column_name, tablespace_name;
+
+-- linux LOBs
+insert into ggtest.lob_sys_gen_linux
+select owner, table_name, column_name, tablespace_name
+from dba_lobs
+where segment_name like 'SYS_%' and owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS');
+commit;
+
+col column_name format a30
+col "LINUX" format a12
+select aix.owner||'.'||aix.table_name "TABLE_NAME", aix.column_name, aix.tablespace_name,
+	NVL2(lx.column_name,'MATCH','!!MISSING!!') "LINUX"
+from ggtest.lob_sys_gen_linux lx full outer join ggtest.lob_sys_gen_aix aix
+  on aix.owner=lx.owner and aix.table_name=lx.table_name and aix.column_name=lx.column_name and aix.tablespace_name=lx.tablespace_name
+where aix.owner is not null and lx.owner is null
+order by aix.owner, aix.table_name, aix.column_name, aix.tablespace_name;
+
+
+*** nls parameters ***
+
+select parameter, value
+from nls_database_parameters
+order by 1;
+
+-- linux
+insert into ggtest.nls_param_linux
+select parameter, value
+from nls_database_parameters;
+commit;
+
+select aix.parameter, aix.value "AIX-VALUE", lx.value "LINUX-VALUE"
+from ggtest.nls_param_linux lx full outer join ggtest.nls_param_aix aix
+  on aix.parameter=lx.parameter
+where aix.value!=lx.value
+order by aix.parameter, aix.value;
+
+*** sequences ***
+
+select sequence_owner, sequence_name, last_number
+from dba_sequences 
+where sequence_owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+order by 1,2;
+
+-- linux
+insert into ggtest.sequences_linux
+select sequence_owner, sequence_name, last_number
+from dba_sequences 
+where sequence_owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS');
+commit;
+
+select aix.sequence_owner, aix.sequence_name, aix.last_number "AIX-NUMBER", lx.last_number "LINUX-NUMBER"
+from ggtest.sequences_linux lx full outer join ggtest.sequences_aix aix
+  on aix.sequence_owner=lx.sequence_owner and aix.sequence_name=lx.sequence_name
+where aix.last_number!=lx.last_number
+order by aix.sequence_owner, aix.sequence_name;
+
+
+*** remove system-generated names from comparisons ***
+
+select OWNER, INDEX_NAME, INDEX_TYPE, TABLE_OWNER, TABLE_NAME, STATUS
+from DBA_INDEXES
+where owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+and index_name not like 'SYS_%'
+order by 1,2;
+
+1159 rows selected.
+850 rows selected.
+
+select owner, index_name, status
+from ggtest.index_count_aix
+where index_name like 'SYS_%'
+order by 1,2;
+
+850 rows selected.
+no rows selected
+
+col OBJECT_NAME format a30
+select object_type, owner, object_name
+from ggtest.object_count_aix
+where object_type='INDEX' and object_name like 'SYS_%'
+order by 1,2,3;
+305 rows selected.
+
+select owner, object_name, object_type, status
+from DBA_OBJECTS
+where object_type not like '%PARTITION%' and owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+and SUBOBJECT_NAME is null and object_name not like 'SYS_%'
+and (owner, object_name, object_type) not in
+(select owner, object_name, object_type from DBA_OBJECTS where owner='PUBLIC' and object_type='SYNONYM')
+order by object_name;
+
+
+select 'ALTER USER "'||username||'" ACCOUNT LOCK;'
+from dba_users
+where ACCOUNT_STATUS in ('OPEN','EXPIRED') and USERNAME not in ('GGS','SYS','SYSTEM','DBSNMP','UIMMONITOR')
+order by 1;
+
+select username, ACCOUNT_STATUS
+from dba_users
+where USERNAME not in ('GGS','SYS','SYSTEM','DBSNMP','UIMMONITOR')
+order by 1;
+
+alter user AUTODDL       account unlock;
+alter user AUTODML       account unlock;
+alter user AWR_USER      account unlock;
+alter user CDPK2F        account unlock;
+alter user CNOXGO        account unlock;
+alter user CNOZK7        account unlock;
+alter user COG6T6        account unlock;
+alter user COG71S        account unlock;
+alter user COGGAU        account unlock;
+alter user COGOTA        account unlock;
+alter user COGQ5C        account unlock;
+alter user COGSPV        account unlock;
+alter user COGY0L        account unlock;
+alter user COGZX6        account unlock;
+alter user CONFLUENCE    account unlock;
+alter user CRUCIBLE      account unlock;
+alter user DB_BACKUP     account unlock;
+alter user DIP           account unlock;
+alter user ECORA         account unlock;
+alter user IDEVUSER      account unlock;
+alter user IDMUNX        account unlock;
+alter user INF_MM        account unlock;
+alter user JIRA          account unlock;
+alter user KDPTXD        account unlock;
+alter user OPS$ORACLE    account unlock;
+alter user ORA_QUALYS_DB account unlock;
+alter user OUTLN         account unlock;
+alter user SONAR         account unlock;
+alter user SQLGUARD      account unlock;
+alter user SQLTUNE       account unlock;
+alter user TNS_USER      account unlock;
+
+
+
+### fixed ###
+*** 4086 checks ***
+- recreate OS authenticated users (12c)
+- TABLESPACE GROUP
+- ORA-00821: Specified value of sga_target 1200M is too small, needs to be at least 1216M
+- users created with double-quotes
+- script timing
+- ORA-03297: file contains used data beyond requested RESIZE value (UNDO 11g)
+- UTL_SMTP utility, we are getting error "ORA-24247: network access denied by access control list (ACL) " (fdlzd)
+- ACL_COUNT is select count(*) acl_count from dict where table_name="DBA_NETWORK_ACLS"
+- revoke privs (obieet)
+- add tier letter to OS-auth users
+- streams pool - ORA-32005: error while parsing size specification [483341107.2] 
+*** datafiles ***
+*** tempfiles ***
+*** dont write errors to log until end or quit ***
+*** alter user CURE_ SUBSCRPT quota UNLIMITED on USERS ***
+*** users with sit, uat in name ***
+*** non-existant default TS ***
+*** CREATE USER "AUDITOR" IDENTIFIED BY VALUES '' DEFAULT TABLESPACE SYSTEM TEMPORARY TABLESPACE TEMP PROFILE DEFAULT
+
+
+############# GG_2_Linux_build_DB.sh #####################
+
+*** show error for failed user creation ***
+-- idevt (lxora12cinfs02)
+select username from dba_users where AUTHENTICATION_TYPE='EXTERNAL' order by 1;
+USERNAME
+--------------------------------------------------------------------------------
+OSAUTHENS
+TESTINGS
+TEST_PROD
+TEST_SIT
+TEST_UAT
+TEST_UT
+
+-- idevt (uxs33)
+select username from dba_users where AUTHENTICATION_TYPE='EXTERNAL' order by 1;
+USERNAME
+------------------------------
+OPS$ORACLE
+OPS$OSAUTHEN
+OPS$TESTING
+OPS$TEST_PROD
+OPS$TEST_SIT
+OPS$TEST_UAT
+OPS$TEST_UT
+
+create user TESTINGS identified by This1Works
+default tablespace users;
+alter user TESTINGS quota 1m on users;
+grant create table to TESTINGS;
+create table TESTINGS.table1 as
+select * from all_tables;
+select count(*) from TESTINGS.table1;
+  COUNT(*)
+----------
+      1289
+
+# works
+gawk '!/(ORA-01920)/' /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_err.log > /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_crit.log; cat /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_crit.log
+gawk '!/(SQLTUNE)|(COGUGJ)/' /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_err.log > /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_crit.log; cat /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_crit.log
+# does not work
+gawk '!/(ORA-01920: user name 'SQLTUNE' conflicts with another user or role name)|(ORA-01920: user name 'COGUGJ' conflicts with another user or role name)/' /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_err.log > /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_crit.log; cat /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_crit.log
+gawk '!/(ORA-01920: user name SQLTUNE conflicts with another user or role name)|(ORA-01920: user name 'COGUGJ' conflicts with another user or role name)/' /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_err.log > /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_crit.log; cat /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_crit.log
+gawk '!/("ORA-01920: user name 'SQLTUNE' conflicts with another user or role name")|(ORA-01920: user name 'COGUGJ' conflicts with another user or role name)/' /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_err.log > /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_crit.log; cat /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_crit.log
+gawk '!/(/"ORA-01920: user name /'SQLTUNE/' conflicts with another user or role name/")|(ORA-01920: user name 'COGUGJ' conflicts with another user or role name)/' /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_err.log > /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_crit.log; cat /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_crit.log
+gawk '!/(\"ORA-01920: user name \'SQLTUNE\' conflicts with another user or role name\")|(ORA-01920: user name 'COGUGJ' conflicts with another user or role name)/' /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_err.log > /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_crit.log; cat /app/oracle/scripts/12cupgrade/logs/GG_2_Linux_build_DB_temp2_idevt_crit.log
+
+
+*** fail if DP doesnt run ***
+-- no logs to check
+-- usually due to permissions
+
+
+*** listener check *** (add to every script)
+lsnrctl services | grep instance
+lsnrctl status | grep -E "The listener supports no services"
+lsnrctl status | grep services
+lsnrctl status | grep TNS-12541 | wc -l
+lsnrctl status | grep Uptime
+
+
+*** logon_trigger TS ***
+ORA-00955: name is already used by an existing object 
+
+
+*** sql_tune_staging table ***
+GRANT INSERT on "SYSTEM".SQL_TUNE_STAGING to "SQLTUNE"     /* grantor SYSTEM*/
+                         *
+ERROR at line 1:
+ORA-00942: table or view does not exist 
+
+
+*** MEMORY_TARGET ***
+-- c3appsm (uxm34 / LXORACPNM01)
+ORA-00838: Specified value of MEMORY_TARGET is too small, needs to be at least 4080M
+
+-- uxm34
+NAME                           DISPLAY_VALUE
+------------------------------ ---------------
+memory_max_target              3900M
+memory_target                  3900M
+sga_max_size                   3864M
+sga_target                     3864M
+streams_pool_size              592M
+
+-- /move/c3appsm_adm01/scripts/setparam_c3appsm.sql
+ALTER SYSTEM SET memory_max_target=4089446400 SCOPE=SPFILE; (3900M)
+ALTER SYSTEM SET memory_target=4089446400 SCOPE=SPFILE;
+ALTER SYSTEM SET sga_max_size=4051697664 SCOPE=SPFILE; (3864M)
+ALTER SYSTEM SET sga_target=4051697664 SCOPE=SPFILE;
+ALTER SYSTEM SET streams_pool_size = 620756992 SCOPE=SPFILE; (592M)
+
+-- /database/c3appsm_admn01/admin/pfile/spfilec3appsm.ora (linux)
+c3appsm.__db_cache_size=201326592			 192M
+c3appsm.__java_pool_size=16777216			  16M
+c3appsm.__large_pool_size=335544320			 320M
+c3appsm.__pga_aggregate_target=218103808	 208M
+*.pga_aggregate_target=209715200			 200M
+c3appsm.__shared_pool_size=687865856		 656M
+*.shared_pool_size=681574400				 650M
+*.memory_max_target=4089446400				3900M
+*.memory_target=4089446400					3900M
+c3appsm.__sga_target=1258291200				1200M
+*.sga_max_size=4051697664					3864M
+*.sga_target=4051697664						3864M
+*.streams_pool_size=620756992				 592M
+...SGA components							1776M
+
+-- unset mem parameters
+select 'ALTER SYSTEM RESET ' || name || ' SCOPE=SPFILE;' "STMT"
+from v$spparameter
+--where name in ('sga_max_size','sga_target','pga_aggregate_target','memory_max_target','memory_target')
+--where name in ('memory_max_target','memory_target')
+where value is NULL and name in
+('memory_max_target','memory_target','sga_max_size','sga_target','shared_pool_size','streams_pool_size','large_pool_size','java_pool_size','pga_aggregate_target','db_cache_size')
+order by 1;
+
+ALTER SYSTEM RESET db_cache_size SCOPE=SPFILE;
+ALTER SYSTEM RESET java_pool_size SCOPE=SPFILE;
+ALTER SYSTEM RESET large_pool_size SCOPE=SPFILE;
+ALTER SYSTEM RESET pga_aggregate_target SCOPE=SPFILE;
+ALTER SYSTEM RESET shared_pool_size SCOPE=SPFILE;
+
+-- set memory to highest value
+select case
+	when sap.SAP > 1572864000 then
+		case when sap.SAP > to_number(pm.value) then 'ALTER SYSTEM SET ' || pm.name || '=' || sap.SAP || ' SCOPE=SPFILE;'
+			else 'ALTER SYSTEM SET ' || pm.name || '=' || pm.value || ' SCOPE=SPFILE;'
+		end
+	when to_number(pm.value) > 1572864000 then 'ALTER SYSTEM SET ' || pm.name || '=' || pm.value || ' SCOPE=SPFILE;'
+	else '-- new memory settings higher than current ones'
+	end "STMT"
+from v$spparameter pm, 
+	(select sum(to_number(value)) "SAP" from v$spparameter where name in ('sga_max_size','pga_aggregate_target')) sap
+where pm.name in ('memory_max_target','memory_target') and pm.value is not NULL
+order by 1;
+
+--select pm.name, pm.value, ms.MAXSGA, mp.MAXPGA, (ms.MAXSGA+mp.MAXPGA) "TOTALMAX"
+select case
+	when pm.value > (ms.MAXSGA+mp.MAXPGA) then 'ALTER SYSTEM SET ' || pm.name || '=' || pm.value || ' SCOPE=SPFILE;'
+	else 'ALTER SYSTEM SET ' || pm.name || '=' || (ms.MAXSGA+mp.MAXPGA) || ' SCOPE=SPFILE;'
+	end "NEWMEM"
+from v$spparameter pm,
+	(select case
+		when max(to_number(value)) > 1258291200 then max(to_number(value))
+		else 1258291200
+		end "MAXSGA" 
+	from v$spparameter where name in ('sga_max_size','sga_target')
+	) ms,
+	(select case
+		when max(to_number(value)) > 314572800 then max(to_number(value))
+		else 314572800
+		end "MAXPGA" 
+	from v$spparameter where name='pga_aggregate_target'
+	) mp
+where pm.name in ('memory_max_target','memory_target') and pm.value is not NULL
+order by 1;
+
+ALTER SYSTEM SET memory_max_target=4366270464 SCOPE=SPFILE;
+ALTER SYSTEM SET memory_target=4366270464 SCOPE=SPFILE;
+
+
+
+
+*** ORA-12514: TNS:listener does not currently know of service requested in connect descriptor ***
+-- Creating tablespaces (dsrm - LXORAODSM02)
+ERROR:
+ORA-12514: TNS:listener does not currently know of service requested in connect descriptor
+
+
+*** autoddl doesn't have default role; not showing in verification ***
+-- AUTODDL user in vExcludeUsers
+
+
+*** denote MVs in table difference counts ***
+col "TABLE" format a40
+col "AIX" format 999,999,990
+col "LINUX" format 999,999,990
+select lx.OWNER||'.'||lx.TABLE_NAME "TABLE", aix.RECORD_COUNT "AIX", lx.RECORD_COUNT "LINUX", lx.RECORD_COUNT-aix.RECORD_COUNT "DIFFERENCE"
+from ggtest.row_count_linux lx full outer join ggtest.row_count_aix aix
+  on aix.OWNER=lx.OWNER and aix.TABLE_NAME=lx.TABLE_NAME
+where lx.RECORD_COUNT!=aix.RECORD_COUNT and lx.owner not in ('GGS','GGTEST')
+order by 1;
+
+select owner, mview_name from dba_mviews order by 1,2;
+no rows selected.
+
+grant create materialized view to ggtest;
+grant unlimited tablespace to ggtest;
+alter user ggtest identified by This1Works;
+
+conn ggtest/This1Works@c3appsd
+create materialized view test_mv
+as select lx.OWNER, lx.TABLE_NAME, aix.RECORD_COUNT "AIX", lx.RECORD_COUNT "LINUX", lx.RECORD_COUNT-aix.RECORD_COUNT "DIFFERENCE"
+	from ggtest.row_count_linux lx full outer join ggtest.row_count_aix aix
+	on aix.OWNER=lx.OWNER and aix.TABLE_NAME=lx.TABLE_NAME;
+
+-- sysdba
+truncate table ggtest.row_count_linux;
+set serveroutput on
+declare
+  cursor cf is
+    select db.name, ins.host_name,
+	  tb.owner, tb.table_name, tb.status
+	from DBA_TABLES tb, v$instance ins, v$database db
+	where tb.IOT_TYPE is null and owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+	and (tb.owner, tb.table_name) not in (select owner, table_name from dba_external_tables);
+  record_count number;
+  sql_str      varchar2(2000);
+  rec cf%rowtype;
+begin
+  open cf;
+  loop
+    fetch cf
+      into rec;
+    exit when cf%notfound;
+    sql_str := 'select count(1) from "' || rec.owner || '"."' || rec.table_name || '"';
+    execute immediate sql_str into record_count;
+    insert into ggtest.row_count_linux
+    values
+      (rec.name, rec.host_name, rec.owner, rec.table_name, rec.status, record_count);
+      commit;
+  end loop;
+  close cf;
+end;
+/
+
+insert into ggtest.row_count_aix
+	(DB_NAME, HOST_NAME, OWNER, TABLE_NAME, STATUS, RECORD_COUNT)
+values
+	('c3appsd','uxs33','GGTEST','NOT_A_TABLE','VALID',999);
+commit;
+select table_name from ggtest.row_count_aix where owner='GGTEST' order by 1;
+NOT_A_TABLE
+OBJECT_COUNT_AIX
+OBJECT_COUNT_LINUX
+ROW_COUNT_AIX
+ROW_COUNT_LINUX
+TABLE1
+
+select NVL(lx.OWNER,aix.OWNER) "OWNER", NVL(lx.TABLE_NAME,aix.TABLE_NAME) "TABLE_NAME", aix.RECORD_COUNT "AIX", lx.RECORD_COUNT "LINUX", lx.RECORD_COUNT-aix.RECORD_COUNT "DIFFERENCE"
+--select aix.TABLE_NAME "AIX_TBL", aix.RECORD_COUNT "AIX", lx.TABLE_NAME "LX_TBL", lx.RECORD_COUNT "LINUX"
+from ggtest.row_count_linux lx full outer join ggtest.row_count_aix aix
+	on aix.OWNER=lx.OWNER and aix.TABLE_NAME=lx.TABLE_NAME
+where (lx.RECORD_COUNT!=aix.RECORD_COUNT OR lx.RECORD_COUNT IS NULL OR aix.RECORD_COUNT IS NULL)
+and (lx.owner='GGTEST' OR aix.owner='GGTEST')
+order by 2;
+
+col MVIEW format a30
+select diff.OWNER||'.'||diff.TABLE_NAME "TABLE", diff."AIX", diff."LINUX", diff."DIFFERENCE", NVL2(mv.mview_name,'YES',NULL) "MVIEW"
+from dba_mviews mv full outer join
+	(select NVL(lx.OWNER,aix.OWNER) "OWNER", NVL(lx.TABLE_NAME,aix.TABLE_NAME) "TABLE_NAME", aix.RECORD_COUNT "AIX", lx.RECORD_COUNT "LINUX", lx.RECORD_COUNT-aix.RECORD_COUNT "DIFFERENCE"
+	 from ggtest.row_count_linux lx full outer join ggtest.row_count_aix aix
+		on aix.OWNER=lx.OWNER and aix.TABLE_NAME=lx.TABLE_NAME
+	 where (lx.RECORD_COUNT!=aix.RECORD_COUNT OR lx.RECORD_COUNT IS NULL OR aix.RECORD_COUNT IS NULL)
+		and (lx.owner='GGTEST' OR aix.owner='GGTEST')) diff
+	on mv.owner=diff.owner and mv.mview_name=diff."TABLE_NAME"
+order by 1;
+
+
+*** encrypted mount points ***
+-- 12c oradata
+vDataDirs=$(ls /database | grep ${vPDBName}0 | grep -v ${vCDBFull}01)
+		for vDirName in ${vDataDirs[@]}
+		do
+			df -h /database/${vDirName}	#mountpoint -q ${vDirName}
+			if [ $? -eq 0 ]
+			then
+				echo "Creating directory /database/${vDirName}/oradata" | tee -a $vOutputLog
+				mkdir /database/${vDirName}/oradata
+				vDirArray+=(/database/${vDirName}/oradata)
+			else
+				echo "ERROR: ${vDirName} is not a mount point!" | tee -a $vOutputLog
+				exit 1
+			fi
+		done
+		
+ls /database/Eawdp | grep awdp0 | grep -v cawdp01
+awdp01
+
+df -h /database/Eawdp/awdp01
+Filesystem                      Size  Used Avail Use% Mounted on
+/dev/mapper/awdpvg01-awdp01_lv  241G   61M  228G   1% /database/Eawdp/awdp01
+
+-- 11g oradata
+vDataDirs=$(ls /database | grep ${vPDBName}0)
+		for vDirName in ${vDataDirs[@]}
+		do
+			df -h /database/${vDirName}	#mountpoint -q ${vDirName}
+			if [ $? -eq 0 ]
+			then
+				echo "Creating directory /database/${vDirName}/oradata" | tee -a $vOutputLog
+				mkdir /database/${vDirName}/oradata
+				vDirArray+=(/database/${vDirName}/oradata)
+			else
+				echo "ERROR: ${vDirName} is not a mount point!" | tee -a $vOutputLog
+				exit 1
+			fi
+		done
+
+ls /database/Efnp8p | grep fnp8p0
+fnp8p01
+fnp8p02
+fnp8p03
+
+df -h /database/Efnp8p/fnp8p02
+Filesystem                        Size  Used Avail Use% Mounted on
+/dev/mapper/fnp8pvg01-fnp8p02_lv  306G   69M  291G   1% /database/Efnp8p/fnp8p02
+
+-- lxora12cinfs02
+mkdir /database/Ecidevt
+mkdir /database/Ecidevt/cidevt01
+mkdir /database/Ecidevt/cidevt_admn01
+mkdir /database/Ecidevt/cidevt_arch01
+mkdir /database/Ecidevt/cidevt_redo01
+mkdir /database/Ecidevt/cidevt_redo02
+mkdir /database/Eidevt
+mkdir /database/Eidevt/idevt01
+
+mkdir /database/Eidevt/idevt_admn01
+mkdir /database/Eidevt/idevt_arch01
+mkdir /database/Eidevt/idevt_redo01
+mkdir /database/Eidevt/idevt_redo02
+
+
+*** object check ***
+col "OBJECT_NAME" format a40
+col "LX_TYPE" format a19
+col "LX_OBJECT_NAME" format a40
+select aix.OBJECT_TYPE, aix.OWNER||'.'||aix.OBJECT_NAME "OBJECT_NAME", aix.STATUS "AIX", lx.STATUS "LINUX"
+--select aix.OBJECT_TYPE, aix.OWNER||'.'||aix.OBJECT_NAME "OBJECT_NAME", lx.OBJECT_TYPE "LX_TYPE", lx.OWNER||'.'||lx.OBJECT_NAME "LX_OBJECT_NAME"
+from ggtest.object_count_linux lx full outer join ggtest.object_count_aix aix
+  on aix.OWNER=lx.OWNER and aix.OBJECT_NAME=lx.OBJECT_NAME and aix.OBJECT_TYPE=lx.OBJECT_TYPE
+where lx.STATUS!=aix.STATUS AND lx.STATUS!='VALID' OR lx.STATUS is null
+-- (lx.STATUS!=aix.STATUS and lx.STATUS!='VALID') OR (lx.OBJECT_NAME is null)
+--and lx.owner not in ('GGS','GGTEST')
+--and aix.OBJECT_NAME in ('CDS_SNAPSHOT_BK','CDS_SNAPSHOT_P')
+order by aix.OBJECT_TYPE, aix.OWNER, aix.OBJECT_NAME;
+
+OBJECT_TYPE         OBJECT_NAME                              LX_TYPE             LX_OBJECT_NAME
+------------------- ---------------------------------------- ------------------- ----------------------------------------
+MATERIALIZED VIEW   CDSINFO.CDS_SNAPSHOT_BK                                      .
+MATERIALIZED VIEW   CDSINFO.CDS_SNAPSHOT_P                                       .
+TABLE               CDSINFO.CDS_SNAPSHOT_BK                  TABLE               CDSINFO.CDS_SNAPSHOT_BK
+TABLE               CDSINFO.CDS_SNAPSHOT_P                   TABLE               CDSINFO.CDS_SNAPSHOT_P
+
+OBJECT_TYPE         OBJECT_NAME                              AIX     LINUX
+------------------- ---------------------------------------- ------- -------
+INDEX               CSMIG.SYS_IL0000419782C00001$$           VALID
+LOB                 CSMIG.SYS_LOB0000419782C00001$$          VALID
+MATERIALIZED VIEW   CDSINFO.CDS_SNAPSHOT_BK                  INVALID
+MATERIALIZED VIEW   CDSINFO.CDS_SNAPSHOT_P                   VALID
+PACKAGE BODY        NETWEB.CDSINFOQUERYPKG                   VALID   INVALID
+PACKAGE BODY        NETWEB.CDSINFOQUERYPKG_NEW_REV           VALID   INVALID
+VIEW                CDSINFO.CNC_DUPLICATE_CHECK_VIEW         VALID   INVALID
+VIEW                CDSINFO.CNC_DUPLICATE_VOUCHER_VIEW       VALID   INVALID
+
+select aix.OBJECT_TYPE, aix.OWNER||'.'||aix.OBJECT_NAME "OBJECT_NAME", lx.OBJECT_TYPE "LX_TYPE", lx.OWNER||'.'||lx.OBJECT_NAME "LX_OBJECT_NAME"
+from ggtest.object_count_linux lx full outer join ggtest.object_count_aix aix
+  on aix.OWNER=lx.OWNER and aix.OBJECT_NAME=lx.OBJECT_NAME and aix.OBJECT_TYPE=lx.OBJECT_TYPE
+where lx.OBJECT_NAME is null;
+
+OBJECT_TYPE         OBJECT_NAME                              LX_TYPE             LX_OBJECT_NAME
+------------------- ---------------------------------------- ------------------- ----------------------------------------
+MATERIALIZED VIEW   CDSINFO.CDS_SNAPSHOT_P                                       .
+INDEX               CSMIG.SYS_IL0000419782C00001$$                               .
+LOB                 CSMIG.SYS_LOB0000419782C00001$$                              .
+MATERIALIZED VIEW   CDSINFO.CDS_SNAPSHOT_BK                                      .
+
+select aix.OBJECT_TYPE, aix.OWNER||'.'||aix.OBJECT_NAME "OBJECT_NAME", lx.OBJECT_TYPE "LX_TYPE", lx.OWNER||'.'||lx.OBJECT_NAME "LX_OBJECT_NAME"
+from ggtest.object_count_linux lx full outer join ggtest.object_count_aix aix
+  on aix.OWNER=lx.OWNER and aix.OBJECT_NAME=lx.OBJECT_NAME and aix.OBJECT_TYPE=lx.OBJECT_TYPE
+where lx.STATUS!=aix.STATUS AND lx.STATUS!='VALID' and lx.owner not in ('GGS','GGTEST')
+
+select aix.OBJECT_TYPE, aix.OWNER||'.'||aix.OBJECT_NAME "OBJECT_NAME", lx.OBJECT_TYPE "LX_TYPE", lx.OWNER||'.'||lx.OBJECT_NAME "LX_OBJECT_NAME"
+from ggtest.object_count_linux lx full outer join ggtest.object_count_aix aix
+  on aix.OWNER=lx.OWNER and aix.OBJECT_NAME=lx.OBJECT_NAME and aix.OBJECT_TYPE=lx.OBJECT_TYPE
+where lx.OBJECT_NAME is null and aix.owner not in ('GGS','GGTEST')
+order by aix.OBJECT_TYPE, aix.OWNER, aix.OBJECT_NAME;
+
+
+*** row count ***
+vRowTable="ggtest.row_count_aix"
+vLinuxRowTable="ggtest.row_count_linux"
+col MVIEW format a5
+select diff.OWNER||'.'||diff.TABLE_NAME "TABLE", diff."AIX", diff."LINUX", diff."DIFFERENCE", NVL2(mv.mview_name,'YES',NULL) "MVIEW"
+from dba_mviews mv right outer join
+	(select NVL(lx.OWNER,aix.OWNER) "OWNER", NVL(lx.TABLE_NAME,aix.TABLE_NAME) "TABLE_NAME", aix.RECORD_COUNT "AIX", lx.RECORD_COUNT "LINUX", lx.RECORD_COUNT-aix.RECORD_COUNT "DIFFERENCE"
+	 from ggtest.row_count_linux lx full outer join ggtest.row_count_aix aix
+		on aix.OWNER=lx.OWNER and aix.TABLE_NAME=lx.TABLE_NAME
+	 where (lx.RECORD_COUNT!=aix.RECORD_COUNT OR lx.RECORD_COUNT IS NULL OR aix.RECORD_COUNT IS NULL)
+		and lx.owner not in ('GGS','GGTEST')) diff
+	on mv.owner=diff.owner and mv.mview_name=diff."TABLE_NAME"
+order by 1;
+
+
+
+### fixed ###
+*** profiles ***
+*** SYSTEM password ***
+*** comparisons ***
+*** OS users ***
+*** check monitoring users ***
+*** grant sys privs ***
+- roles
+*** quota ***
+- OS authetication
+- proxy privileges
+- REFRESH_GROUP
+- DB link check - put links into shell array then login in separately for each to avoid too many DB links in use
+- identify the ones that are HS
+- SP2-0310: unable to open file "/sequence_auto.sql"
+- ORA-04043: object REPLICATESEQUENCE does not exist
+- strip init12c.ora of all but basics to run duplicate
+- 11g WE8ISO8859P1 duplicate
+- utl_file_dir
+- ORA-01537: cannot add file '/database/trmpd01/oradata/undo01.dbf' - file already part of database (trmpd)
+- DP directory privs
+- oradata directory (obieem)
+- cigfdst - RMAN-04014: startup failed: ORA-16032: parameter LOG_ARCHIVE_DEST destination string cannot be translated
+- background_dump_dest                 string      /app/oracle/product/db/12c/1/rdbms/log
+- logon triggers (need to include / before ALTER statement)
+- ORA-04098: trigger is invalid
+- AUTODDL, AUTODML users in custsvct
+- Privilege comparison
+
+### too much work ###
+*** HS links ***
+-- automate creation
+
+
+
+############# GG_3_Linux_start_replicat.sh #####################
+
+-- put create replicat commands in script
+-- add to KT doc to use that if it doesn't start for SCN
+
+-- add update to tnsnames.ora file
+
+
+*** quit if processes already running ***
+
+
+*** verify where tnsnames points ***
+
+
+
+############# GGRR_1_stop_extract_AIX.sh #####################
+
+*** add DB link verification ***
+
+
+
+-- use different tar file name
+
+
+-- fdlzd
+-- re-populate row count section
+declare
+*
+ERROR at line 1:
+ORA-00001: unique constraint (GGTEST.ROW_COUNT_AIX_PK) violated
+ORA-06512: at line 19
+
+-- cnofdwt
+ERROR: sending message to EXTRACT ECN_DWT1 (Timeout waiting for message).
+
+
+-- write commands to create GG processes to script so they can be easily run again
+
+
+*** quit if processes already running ***
+
+
+### Fixed ###
+- FDLZT, FAH_ACCNT_PASSTHRU_KEY_SEQ seq value  are repeated on below 2 tables
+(GGRR_2_stop_replicat_Linux.sh not run)
+
+
+
+############# GGRR_2_stop_replicat_LXOGG.sh #####################
+
+*** use different tar file name
+
+*** write commands to create GG processes to script so they can be easily run again
+
+*** ERROR: All DB links must be fixed before continuing. ***
+-- bparptm (10/3; LXORABPAM01)
+BPARPTT needs to be fixed!
+BPARPTP needs to be fixed!
+
+-- bparptm (uxm33)
+BPARPTT needs to be fixed!
+BPARPTP needs to be fixed!
+
+select * from dba_db_links where db_link in ('BPARPTT','BPARPTP');
+OWNER  DB_LINK USERNAME HOST    CREATED
+------ ------- -------- ------- --
+AWDSLA BPARPTP AWDSLA   bparptp 05/08/2013
+AWDSLA BPARPTT AWDSLA   bparptt 05/07/2014
+
+select sysdate from dual@BPARPTP
+                         *
+ERROR at line 1:
+ORA-02019: connection description for remote database not found
+(same for BPARPTT)
+
+ALTER SESSION SET CURRENT_SCHEMA = AWDSLA;
+
+-- uxs33 (sysdba)
+create database link BPARPTT
+connect to AWDSLA identified by &pwd
+using 'bparptt';
+
+select sysdate from dual@BPARPTT;
+SYSDATE
+----------
+10/04/2017
+
+drop database link BPARPTT;
+grant create database link to CNOZK7;
+alter user CNOZK7 identified by This1Works;
+alter user CNOZK7 account unlock;
+
+-- uxs33 (CNOZK7)
+create database link BPARPTT
+connect to AWDSLA identified by &pwd
+using 'bparptt';
+
+select sysdate from dual@BPARPTT;
+SYSDATE
+----------
+10/04/2017
+
+-- uxs33 (system)
+select sysdate from dual@BPARPTT
+                         *
+ERROR at line 1:
+ORA-02019: connection description for remote database not found
+
+-- use proxy connection
+alter user CNOZK7 grant connect through system;
+connect system[CNOZK7]@idevt;
+sho user
+USER is "CNOZK7"
+
+select sysdate from dual@BPARPTT;
+SYSDATE
+----------
+10/04/2017
+
+connect system@idevt;
+alter user CNOZK7 revoke connect through system;
+
+-- idevt - LXORA12CINFS02
+grant create database link to CNOZK7;
+alter user CNOZK7 identified by This1Works;
+alter user CNOZK7 account unlock;
+
+conn CNOZK7
+alter session set container=idevt;
+create database link BPARPTT
+connect to AWDSLA identified by &pwd
+using 'bparptt';
+
+select sysdate from dual@BPARPTT;
+SYSDATE
+----------
+10/04/2017
+
+conn / as sysdba
+grant create database link to ggs;
+
+conn ggs
+alter session set container=idevt;
+create database link BPARPTT
+connect to AWDSLA identified by &pwd
+using 'bparptt';
+
+
+-- mwarem (10/3; uxm34; LXORABPAM02)
+QUALITYDATABASEINBIZFLOW.WORLD needs to be fixed!
+
+$ORACLE_HOME/bin/sqlplus "system@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=LXORA12CINFS02.conseco.ad)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=idevt)))"
+
+
+*** check for links with hard-coded host ***
+alter session set container=idevt;
+CREATE PUBLIC DATABASE LINK lxhardcode
+using '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=LXORA12CINFS02.conseco.ad)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=idevt)))';
+
+set lines 150 pages 200
+select host, INSTR(UPPER(host),'HOST'), INSTR(UPPER(host),')',INSTR(UPPER(host),'HOST')),
+SUBSTR(host, INSTR(UPPER(host),'HOST')+5, INSTR(UPPER(host),')',INSTR(UPPER(host),'HOST')) - INSTR(UPPER(host),'HOST') - 5)
+from dba_db_links
+where (INSTR(UPPER(host),'UX') + INSTR(UPPER(host),'LX'))>0;
+
+select 'Link '||db_link||' is hard-coded to '||
+SUBSTR(host, INSTR(UPPER(host),'HOST')+5, INSTR(UPPER(host),')',INSTR(UPPER(host),'HOST')) - INSTR(UPPER(host),'HOST') - 5)
+from dba_db_links
+where (INSTR(UPPER(host),'UX') + INSTR(UPPER(host),'LX'))>0;
+
+
+*** refresh mviews ***
+-- uxs33
+alter user cnozk7 identified by This1Works;
+alter user cnozk7 account unlock;
+alter user cnozk7 quota unlimited on users;
+conn cnozk7/This1Works
+create table t1 as select user_id, username from dba_users;
+create table t2 as select owner, table_name from dba_tables;
+create table t3 as select owner, view_name from dba_views;
+create materialized view mv1
+as select t1.user_id, t2.owner, t2.table_name
+   from t1, t2
+   where t1.username=t2.owner;
+create materialized view mv2 as
+	select t1.user_id, t3.owner, t3.view_name
+	from t1, t3
+	where t1.username=t3.owner;
+BEGIN
+  dbms_refresh.make(name=>'CNOZK7.RG1',list=>null,next_date=>sysdate,interval=>'sysdate+1');
+  dbms_refresh.add(name=>'CNOZK7.RG1',list=>'CNOZK7.MV1,CNOZK7.MV2');
+END;
+/
+
+sqlplus cnozk7/This1Works
+insert into t1 (user_id, username) values (99999, 'SNOWMAN-THE-JIMMY');
+insert into t2 (owner, table_name) values ('SNOWMAN-THE-JIMMY', 'CRAKERS');
+delete from t3 where owner='SYS';
+commit;
+select * from cnozk7.mv1 where owner='SNOWMAN-THE-JIMMY';
+select * from cnozk7.mv2 where owner='SYS';
+EXECUTE DBMS_MVIEW.REFRESH(LIST=>'CNOZK7.MV1,CNOZK7.MV2',PARALLELISM=>4);
+
+select * from cnozk7.mv1 where owner='SNOWMAN-THE-JIMMY';
+   USER_ID OWNER                          TABLE_NAME
+---------- ------------------------------ ------------------------------
+     99999 SNOWMAN-THE-JIMMY              CRAKERS
+
+select * from cnozk7.mv2 where owner='SYS';
+no rows selected
+
+
+-- lxora12cinfs02
+set lines 150 pages 200	
+col MVIEW format a5
+select diff.OWNER||'.'||diff.TABLE_NAME "TABLE", diff."AIX", diff."LINUX", diff."DIFFERENCE", NVL2(mv.mview_name,'YES',NULL) "MVIEW"
+--select 'EXECUTE DBMS_MVIEW.REFRESH(LIST=>'''||diff.OWNER||'.'||diff.TABLE_NAME||''',PARALLELISM=>4);'
+from dba_mviews mv join
+	(select NVL(lx.OWNER,aix.OWNER) "OWNER", NVL(lx.TABLE_NAME,aix.TABLE_NAME) "TABLE_NAME", aix.RECORD_COUNT "AIX", lx.RECORD_COUNT "LINUX", lx.RECORD_COUNT-aix.RECORD_COUNT "DIFFERENCE"
+	 from ggtest.row_count_linux lx full outer join ggtest.row_count_aix aix
+		on aix.OWNER=lx.OWNER and aix.TABLE_NAME=lx.TABLE_NAME
+	 where (lx.RECORD_COUNT!=aix.RECORD_COUNT OR lx.RECORD_COUNT IS NULL OR aix.RECORD_COUNT IS NULL)
+		and lx.owner not in ('GGS','GGTEST')) diff
+	on mv.owner=diff.owner and mv.mview_name=diff."TABLE_NAME"
+order by 1;
+
+TABLE                                                                                    AIX      LINUX DIFFERENCE MVIEW
+--------------------------------------------------------------------------------- ---------- ---------- ---------- -----
+CNOZK7.MV1                                                                              1798       1797         -1 YES
+CNOZK7.MV2                                                                                60       3970       3910 YES
+
+alter session set container=idevp;
+set lines 150 pages 200	
+set serveroutput on
+DECLARE
+  CURSOR c1 IS
+	select diff.OWNER||'.'||diff.TABLE_NAME "MVIEW_NAME" from dba_mviews mv join
+		(select NVL(lx.OWNER,aix.OWNER) "OWNER", NVL(lx.TABLE_NAME,aix.TABLE_NAME) "TABLE_NAME"
+		 from ggtest.row_count_linux lx full outer join ggtest.row_count_aix aix
+			on aix.OWNER=lx.OWNER and aix.TABLE_NAME=lx.TABLE_NAME
+		where (lx.RECORD_COUNT!=aix.RECORD_COUNT OR lx.RECORD_COUNT IS NULL OR aix.RECORD_COUNT IS NULL)
+		and lx.owner not in ('GGS','GGTEST')) diff
+	on mv.owner=diff.owner and mv.mview_name=diff."TABLE_NAME";
+ --  v_mview_name	VARCHAR2(80);
+BEGIN
+	for rmv2ref in c1 loop
+		begin
+			dbms_mview.refresh(rmv2ref.MVIEW_NAME);
+			dbms_output.put_line(rmv2ref.MVIEW_NAME ||' refreshed at '|| to_char(systimestamp));
+		exception
+		when others then
+			dbms_output.put_line(rmv2ref.MVIEW_NAME ||' Errored at '|| to_char(systimestamp));
+			dbms_output.put_line('    Error: '|| sqlcode ||':'||sqlerrm);
+		end;
+	end loop;
+END;
+/
+
+BEGIN
+  OPEN c1;
+  LOOP  -- Fetches 2 columns into variables
+    FETCH c1 INTO v_mview_name;
+    EXIT WHEN c1%NOTFOUND;
+	DBMS_OUTPUT.PUT_LINE('Refreshing materialized view '||v_mview_name);
+	--DBMS_MVIEW.REFRESH(LIST=>'||v_mview_name||',PARALLELISM=>4);
+  END LOOP;
+  CLOSE c1;
+END;
+/
+
+
+*** start jobs for refresh groups ***
+
+alter session set container=idevp;
+alter session set nls_date_format='MM/DD HH24:MI';
+set lines 150 pages 200
+col rowner format a30
+col rname format a30
+col interval format a40
+select rowner, rname, job, next_date, interval, broken
+from dba_refresh
+order by 1,2;
+
+ROWNER                         RNAME                                 JOB NEXT_DATE   INTERVAL                                 B
+------------------------------ ------------------------------ ---------- ----------- ---------------------------------------- -
+CNOZK7                         RG1                                     1 06/18 16:34 sysdate+1                                N
+
+exec dbms_ijob.broken(1,true);
+COMMIT;
+
+ROWNER                         RNAME                                 JOB NEXT_DATE   INTERVAL                                 B
+------------------------------ ------------------------------ ---------- ----------- ---------------------------------------- -
+CNOZK7                         RG1                                     1 01/01 00:00 sysdate+1                                Y
+
+exec dbms_ijob.broken(1,false);
+COMMIT;
+
+ROWNER                         RNAME                                 JOB NEXT_DATE   INTERVAL                                 B
+------------------------------ ------------------------------ ---------- ----------- ---------------------------------------- -
+CNOZK7                         RG1                                     1 06/18 16:28 sysdate+1                                N
+
+
+select 'exec dbms_job.broken('||job||',TRUE); -- for '||rowner||'.'||rname||''
+from dba_refresh where broken='N'
+order by rowner, rname;
+
+
+
+############# GGRR_3_start_extract_Linux.sh #####################
+
+-- schematrandata
+GGSCI (LXORAINFD01 as GGS@cdsgd/CDB$ROOT) 3> ADD SCHEMATRANDATA AUDIT_GKPR
+
+ERROR: The catalog name is missing. Fully qualified name for table AUDIT_GKPR.table is required for root database.
+
+
+*** trecsct ***
+OGG-00267  Obey file /app/oracle/product/ggate/11g/1/dirprm/ealldbs_DDL.inc does not exist.
+
+
+-- use different tar file name
+
+-- write commands to create GG processes to script so they can be easily run again
+
+-- manually set environment for ORACLE HOME for the pump process
+
+-- update materialized views
+select owner, MVIEW_NAME 
+from dba_mviews 
+--where owner not in ($EXCLUDE) 
+where owner not in
+order by 1;
+
+-- [WILDCARDRESOLVE] is deprecated.
+
+DIRDAT="${GGATE}/dirdat"
+DIROUT="${GGATE}/dirout"
+DIRPRM="${GGATE}/dirprm"
+DBDAT="${DIRDAT}/${vPDBName}"		/oragg/trail/${vPDBName}
+vGGRevDir="${DBDAT}/RR"
+vExtTrail="${vGGRevDir}/ea"
+vRmtTrail="${vGGRevDir}/ra"
+
+
+############# GGRR_4_start_replicat_LXOGG.sh #####################
+
+-- use different tar file name
+
+-- write commands to create GG processes to script so they can be easily run again
+
+-- should I delete old replicat from AIX to Linux (need 5th script to do the same on AIX)
+
+
+############# Linux Templates #####################
+
+Ver CharSet			Template	Example		VM
+--- --------------- ----------- ----------- -----------
+11g AL32UTF8		gs11g		fnp8t
+11g US7ASCII		gs11ascii	cigfdst
+11g WE8ISO8859P1	bpad		bpat
+12c AL32UTF8		cgs12c		hubm		LXORABPAM02
+12c US7ASCII		gsascii		lbillm		LXORABPAM02
+12c WE8ISO8859P1	cbpad		bparptm		LXORABPAM01
+
+
+-- AUTODDL does not have AUTODDL_ADMIN role
+-- trmpm (uxm33, LXORAINVM01; 12c, US7ASCII)
+
+
+set lines 150 pages 200
+col username format a30
+col profile format a20
+select username, profile, common, ORACLE_MAINTAINED
+from dba_users where username in 
+('AUTODDL','AUTODML','ECORA','ORA_QUALYS_DB','SQLTUNE','TNS_USER','UIMMONITOR')
+order by 1;
+
+USERNAME                       PROFILE              COM O
+------------------------------ -------------------- --- -
+AUTODDL                        APP_PROFILE          YES N
+AUTODML                        APP_PROFILE          YES N
+ECORA                          APP_PROFILE          YES N
+ORA_QUALYS_DB                  APP_PROFILE          YES N
+SQLTUNE                        APP_PROFILE          YES N
+TNS_USER                       APP_PROFILE          YES N
+UIMMONITOR                     APP_PROFILE          YES N
+
+alter user &what_user profile app_profile;
+
+col LIMIT format a15
+col PROFILE format a12
+col "C" format 90
+set lines 150 pages 200
+select CON_ID "C", PROFILE, RESOURCE_NAME, LIMIT, COMMON "CMN"
+from cdb_profiles
+where profile in ('DEFAULT','APP_PROFILE','CNO_PROFILE')
+order by 1,2,3;
+
+alter profile &what_profile limit &what_limit &new_limit;
+
+set lines 150 pages 200
+col con_id format 990
+col role format a30
+select con_id, role, common, oracle_maintained
+from cdb_roles
+where role in ('AWR_REPORT_ROLE','AUTODDL_ADMIN','AUTODML_ADMIN','SECURITY_ADMIN','READONLY','READWRITE','EXECROLE','APP_USER','APP_DBA',
+'APP_DEVELOPER','PROD_DBA_ROLE','APP_DBA_ROLE','APP_DEVELOPER_ROLE','SECURITY_ADMIN_ROLE','QUALYS_ROLE')
+order by 1,2;
+
+CON_ID ROLE                           COM O
+------ ------------------------------ --- -
+     1 APP_DBA_ROLE                   YES N
+     1 APP_DEVELOPER_ROLE             YES N
+     1 AUTODDL_ADMIN                  YES N
+     1 AUTODML_ADMIN                  YES N
+     1 AWR_REPORT_ROLE                YES N
+     1 PROD_DBA_ROLE                  YES N
+     1 QUALYS_ROLE                    YES N
+     1 SECURITY_ADMIN_ROLE            YES N
+	 
+col con_id format 990
+col grantee format a30
+col granted_role format a30
+select con_id, grantee, granted_role, default_role, common
+from cdb_role_privs
+where grantee in ('AUTODDL','AUTODML','ECORA','ORA_QUALYS_DB','SQLTUNE','TNS_USER','UIMMONITOR')
+order by 1,2,3;
+
+CON_ID GRANTEE                        GRANTED_ROLE                   DEF COM
+------ ------------------------------ ------------------------------ --- ---
+     1 AUTODDL                        AUTODDL_ADMIN                  YES YES
+     1 AUTODDL                        CONNECT                        YES YES
+     1 AUTODML                        AUTODML_ADMIN                  YES YES
+     1 AUTODML                        CONNECT                        YES YES
+     1 ORA_QUALYS_DB                  QUALYS_ROLE                    YES YES
+     1 SQLTUNE                        OEM_ADVISOR                    YES YES
+     1 SQLTUNE                        SELECT_CATALOG_ROLE            YES YES
+     1 UIMMONITOR                     CONNECT                        YES YES
+     1 UIMMONITOR                     SELECT_CATALOG_ROLE            YES YES
+
+col con_id format 990
+col owner format a30
+col object_name format a30
+select ob.con_id, ob.owner, ob.object_name, ob.object_type, ob.oracle_maintained
+from cdb_objects ob, cdb_users us
+where ob.owner=us.username and ob.con_id=us.con_id
+and us.oracle_maintained='N'
+order by 1,2,3;
+
+col con_id format 990
+col owner format a30
+col object_name format a30
+select con_id, owner, object_name, oracle_maintained from cdb_objects where object_name like 'SQL_TUNE%' order by 1,2,3;
+
+set lines 150 pages 50
+col "PRIVILEGE" format a60
+select con_id, privilege||' on '||owner||'.'||table_name "PRIVILEGE"
+from cdb_tab_privs
+where lower(grantee)='sqltune' and owner='SYSTEM' 
+and table_name in ('SQL_TUNE_STAGING','SQL_TUNE_TASK_STAGING')
+order by con_id, owner, table_name, privilege;
+
+grant SELECT, DELETE, UPDATE, INSERT on SYSTEM.SQL_TUNE_STAGING to sqltune;
+grant SELECT, DELETE, UPDATE, INSERT on SYSTEM.SQL_TUNE_TASK_STAGING to sqltune;
+
+select * from DBA_CONTAINER_DATA where username='SQLTUNE';
+
+alter user sqltune set container_data=all container=current;
+
+
+-- #######################
+-- idevt (12c UTF)
+-- duplicate_12c_fnc (486)
+-- vGS12=cgs12c
+-- #######################
+
+    CON_ID ROLE                           COM O
+---------- ------------------------------ --- -
+         1 APP_DBA_ROLE                   YES Y
+         1 APP_DEVELOPER_ROLE             YES Y
+         1 AUTODDL_ADMIN                  YES N
+         1 AUTODML_ADMIN                  YES N
+         1 AWR_REPORT_ROLE                YES Y
+         1 PROD_DBA_ROLE                  YES Y
+         1 QUALYS_ROLE                    YES N
+         1 SECURITY_ADMIN_ROLE            YES Y
+
+@Copy_role.sql APP_DBA_ROLE
+@Copy_role.sql APP_DEVELOPER_ROLE
+@Copy_role.sql AWR_REPORT_ROLE
+@Copy_role.sql PROD_DBA_ROLE
+@Copy_role.sql SECURITY_ADMIN_ROLE
+
+alter session set "_oracle_script"=true;
+drop role APP_DBA_ROLE;
+drop role APP_DEVELOPER_ROLE;
+drop role AWR_REPORT_ROLE;
+drop role PROD_DBA_ROLE;
+drop role SECURITY_ADMIN_ROLE;
+
+alter session set "_oracle_script"=false;
+@Copy_role_APP_DBA_ROLE_CGS12C.sql
+@Copy_role_APP_DEVELOPER_ROLE_CGS12C.sql
+@Copy_role_AWR_REPORT_ROLE_CGS12C.sql
+@Copy_role_PROD_DBA_ROLE_CGS12C.sql
+@Copy_role_SECURITY_ADMIN_ROLE_CGS12C.sql
+
+CON_ID GRANTEE                        GRANTED_ROLE                   DEF COM
+------ ------------------------------ ------------------------------ --- ---
+     1 AUTODDL                        AUTODDL_ADMIN                  YES YES
+     1 AUTODML                        AUTODML_ADMIN                  YES YES
+     1 ORA_QUALYS_DB                  QUALYS_ROLE                    YES NO
+     1 SQLTUNE                        OEM_ADVISOR                    YES NO
+     1 SQLTUNE                        SELECT_CATALOG_ROLE            YES NO
+     1 UIMMONITOR                     CONNECT                        NO  YES
+     1 UIMMONITOR                     SELECT_CATALOG_ROLE            YES YES
+
+revoke QUALYS_ROLE from ORA_QUALYS_DB;
+revoke OEM_ADVISOR from SQLTUNE;
+revoke SELECT_CATALOG_ROLE from SQLTUNE;
+grant QUALYS_ROLE to ORA_QUALYS_DB container=all;
+grant OEM_ADVISOR to SQLTUNE container=all;
+grant SELECT_CATALOG_ROLE to SQLTUNE container=all;
+alter user UIMMONITOR default role all container=all;
+
+
+/* fix DEFAULT afterwards */
+
+-- cnofarm - LXORAODSM01 (12c ASCII)
+-- duplicate_ascii_fnc (331)
+-- vGSASCII=gsascii
+
+    CON_ID ROLE                           COM O
+---------- ------------------------------ --- -
+         1 APP_DBA_ROLE                   YES Y
+         1 APP_DEVELOPER_ROLE             YES Y
+         1 AUTODDL_ADMIN                  YES Y
+         1 AUTODML_ADMIN                  YES Y
+         1 AWR_REPORT_ROLE                YES Y
+         1 PROD_DBA_ROLE                  YES Y
+         1 QUALYS_ROLE                    YES N
+         1 SECURITY_ADMIN_ROLE            YES Y
+
+@Copy_role.sql APP_DBA_ROLE
+@Copy_role.sql APP_DEVELOPER_ROLE
+@Copy_role.sql AUTODDL_ADMIN
+@Copy_role.sql AUTODML_ADMIN
+@Copy_role.sql AWR_REPORT_ROLE
+@Copy_role.sql PROD_DBA_ROLE
+@Copy_role.sql SECURITY_ADMIN_ROLE
+
+alter session set "_oracle_script"=true;
+drop role APP_DBA_ROLE;
+drop role APP_DEVELOPER_ROLE;
+drop role AUTODDL_ADMIN;
+drop role AUTODML_ADMIN;
+drop role AWR_REPORT_ROLE;
+drop role PROD_DBA_ROLE;
+drop role SECURITY_ADMIN_ROLE;
+
+set feedback on
+set echo on
+set pages 200
+alter session set "_oracle_script"=false;
+@Copy_role_APP_DBA_ROLE_GSASCII.sql
+@Copy_role_APP_DEVELOPER_ROLE_GSASCII.sql
+@Copy_role_AUTODDL_ADMIN_GSASCII.sql
+@Copy_role_AUTODML_ADMIN_GSASCII.sql
+@Copy_role_AWR_REPORT_ROLE_GSASCII.sql
+@Copy_role_PROD_DBA_ROLE_GSASCII.sql
+@Copy_role_SECURITY_ADMIN_ROLE_GSASCII.sql
+
+@Copy_Schema.sql AUTODDL
+@Copy_Schema.sql AUTODML
+alter session set "_oracle_script"=true;
+drop user AUTODDL cascade;
+drop user AUTODML cascade;
+drop user ECORA cascade;
+drop user UIMMONITOR cascade;
+alter session set "_oracle_script"=false;
+-- add container=all
+@Copy_Schema_AUTODDL_GSASCII.sql
+@Copy_Schema_AUTODML_GSASCII.sql
+@Copy_Schema_ECORA_CGS12C.sql
+@Copy_Schema_UIMMONITOR_CGS12C.sql
+
+alter profile CNO_PROFILE  limit FAILED_LOGIN_ATTEMPTS 3;
+alter profile CNO_PROFILE  limit PASSWORD_LOCK_TIME 1;
+alter profile CNO_PROFILE  limit PASSWORD_REUSE_MAX 3;
+alter profile DEFAULT      limit FAILED_LOGIN_ATTEMPTS UNLIMITED; 
+alter profile DEFAULT      limit PASSWORD_GRACE_TIME UNLIMITED;
+alter profile DEFAULT      limit PASSWORD_LIFE_TIME UNLIMITED;
+alter profile DEFAULT      limit PASSWORD_LOCK_TIME UNLIMITED;
+alter profile DEFAULT      limit PASSWORD_VERIFY_FUNCTION VERIFY_FUNCTION_CNO;
+
+CON_ID GRANTEE                        GRANTED_ROLE                   DEF COM
+------ ------------------------------ ------------------------------ --- ---
+     1 AUTODDL                        CONNECT                        NO  YES
+     1 AUTODML                        CONNECT                        YES YES
+     1 ORA_QUALYS_DB                  QUALYS_ROLE                    YES NO
+     1 SQLTUNE                        OEM_ADVISOR                    YES NO
+     1 SQLTUNE                        SELECT_CATALOG_ROLE            YES NO
+     1 UIMMONITOR                     CONNECT                        NO  YES
+     1 UIMMONITOR                     SELECT_CATALOG_ROLE            YES YES
+
+grant AWR_REPORT_ROLE to SYSTEM with admin option container=all;
+grant AUTODDL_ADMIN to SYSTEM with admin option container=all;
+grant AUTODDL_ADMIN to AUTODDL container=all;
+grant AUTODML_ADMIN to SYSTEM with admin option container=all;
+grant AUTODML_ADMIN to AUTODML container=all;
+grant APP_DBA_ROLE to SYSTEM with admin option  container=all;
+grant APP_DEVELOPER_ROLE to SYSTEM with admin option container=all;
+grant PROD_DBA_ROLE to SYSTEM with admin option container=all;
+grant SECURITY_ADMIN_ROLE to SYSTEM with admin option container=all;
+revoke QUALYS_ROLE from ORA_QUALYS_DB;
+grant QUALYS_ROLE to ORA_QUALYS_DB container=all;
+revoke OEM_ADVISOR from SQLTUNE;
+revoke SELECT_CATALOG_ROLE from SQLTUNE;
+grant OEM_ADVISOR to SQLTUNE container=all;
+grant SELECT_CATALOG_ROLE to SQLTUNE container=all;
+
+alter user AUTODDL default role all;
+alter user AUTODML default role all;
+alter user UIMMONITOR default role all;
+
+/* fix DEFAULT afterwards */
+
+
+-- #######################
+-- bparptt - LXORABPAT01 (12c WE8)
+-- duplicate_we8_fnc (386)
+-- vGSWE8=cbpad
+-- #######################
+
+    CON_ID ROLE                           COM O
+---------- ------------------------------ --- -
+         1 APP_DBA_ROLE                   YES N
+         1 APP_DEVELOPER_ROLE             YES N
+         1 AUTODDL_ADMIN                  YES N
+         1 AUTODML_ADMIN                  YES N
+         1 AWR_REPORT_ROLE                YES N
+         1 PROD_DBA_ROLE                  YES N
+         1 QUALYS_ROLE                    YES N
+         1 SECURITY_ADMIN_ROLE            YES N
+
+CDB
+---
+AUTODDL                        DEFAULT              YES N
+AUTODML                        DEFAULT              YES N
+ECORA                          APP_PROFILE          YES N
+ORA_QUALYS_DB                  APP_PROFILE          YES N
+TNS_USER                       APP_PROFILE          YES N
+UIMMONITOR                     APP_PROFILE          YES N
+(missing: SQLTUNE)
+
+alter system set exclude_seed_cdb_view=FALSE scope=both;
+@Copy_Schema_SQLTUNE_cbpad.sql
+alter user AUTODDL profile app_profile;
+alter user AUTODML profile app_profile;
+
+alter profile CNO_PROFILE limit FAILED_LOGIN_ATTEMPTS 3;
+alter profile CNO_PROFILE limit PASSWORD_LOCK_TIME 1;
+alter profile CNO_PROFILE limit PASSWORD_REUSE_MAX 3;
+alter profile DEFAULT limit FAILED_LOGIN_ATTEMPTS UNLIMITED;
+alter profile DEFAULT limit PASSWORD_LOCK_TIME UNLIMITED;
+alter profile DEFAULT limit PASSWORD_GRACE_TIME UNLIMITED;
+alter profile DEFAULT limit PASSWORD_LIFE_TIME UNLIMITED;
+alter profile DEFAULT limit PASSWORD_VERIFY_FUNCTION VERIFY_FUNCTION_CNO;
+
+/* fix DEFAULT afterwards */
+
+CON_ID GRANTEE                        GRANTED_ROLE                   DEF COM
+------ ------------------------------ ------------------------------ --- ---
+     1 AUTODDL                        AUTODDL_ADMIN                  YES YES
+     1 AUTODML                        AUTODML_ADMIN                  YES YES
+     1 ORA_QUALYS_DB                  QUALYS_ROLE                    YES NO
+     1 SQLTUNE                        OEM_ADVISOR                    YES YES
+     1 SQLTUNE                        SELECT_CATALOG_ROLE            NO  YES
+     1 UIMMONITOR                     CONNECT                        YES YES
+     1 UIMMONITOR                     SELECT_CATALOG_ROLE            YES YES
+
+revoke QUALYS_ROLE from ORA_QUALYS_DB;
+grant QUALYS_ROLE to ORA_QUALYS_DB container=all;
+alter user ORA_QUALYS_DB default role all container=all;
+alter user SQLTUNE default role all container=all;
+
+
+-- #######################
+-- 11g queries
+-- #######################
+
+set lines 150 pages 200
+col username format a30
+col profile format a20
+select username, profile
+from dba_users where username in 
+('AUTODDL','AUTODML','ECORA','ORA_QUALYS_DB','SQLTUNE','TNS_USER','UIMMONITOR')
+order by 1;
+
+col LIMIT format a15
+col PROFILE format a12
+set lines 150 pages 200
+select PROFILE, RESOURCE_NAME, LIMIT
+from dba_profiles
+order by 1,2;
+
+-- #######################
+-- portalm - LXORAODSM01 (11g ASCII)
+-- duplicate_11g_ascii_fnc (585)
+-- vGS11ascii=gs11ascii
+-- #######################
+
+@Copy_Schema_SQLTUNE_bpad_11g.sql
+alter user AUTODDL profile app_profile;
+alter user AUTODML profile app_profile;
+
+alter profile APP_PROFILE  limit PASSWORD_VERIFY_FUNCTION VERIFY_FUNCTION_CNO;
+alter profile CNO_PROFILE  limit FAILED_LOGIN_ATTEMPTS 3;
+alter profile CNO_PROFILE  limit PASSWORD_GRACE_TIME 0;
+alter profile CNO_PROFILE  limit PASSWORD_LIFE_TIME 90;
+alter profile CNO_PROFILE  limit PASSWORD_LOCK_TIME 1;
+alter profile CNO_PROFILE  limit PASSWORD_REUSE_MAX 3;
+alter profile CNO_PROFILE  limit PASSWORD_REUSE_TIME UNLIMITED;
+alter profile CNO_PROFILE  limit PASSWORD_VERIFY_FUNCTION VERIFY_FUNCTION_CNO;
+alter profile DEFAULT      limit PASSWORD_VERIFY_FUNCTION VERIFY_FUNCTION_CNO;
+alter profile DEFAULT      limit FAILED_LOGIN_ATTEMPTS UNLIMITED;
+alter profile DEFAULT      limit PASSWORD_GRACE_TIME UNLIMITED;
+alter profile DEFAULT      limit PASSWORD_LIFE_TIME UNLIMITED;
+alter profile DEFAULT      limit PASSWORD_LOCK_TIME UNLIMITED;
+
+
+-- #######################
+-- obieem - LXORAFINM04 (11g UTF)
+-- duplicate_11g_fnc (539)
+-- vGS11=gs11g
+-- #######################
+
+alter user AUTODDL profile app_profile;
+alter user AUTODML profile app_profile;
+alter user SQLTUNE profile app_profile;
+
+alter profile APP_PROFILE  limit PASSWORD_VERIFY_FUNCTION VERIFY_FUNCTION_CNO;
+alter profile CNO_PROFILE  limit FAILED_LOGIN_ATTEMPTS 3;
+alter profile CNO_PROFILE  limit PASSWORD_LOCK_TIME 1;
+alter profile CNO_PROFILE  limit PASSWORD_REUSE_MAX 3;
+alter profile DEFAULT      limit PASSWORD_VERIFY_FUNCTION VERIFY_FUNCTION_CNO;
+
+
+-- #######################
+-- cigfdsm - LXORAODSM01 (11g WE8)
+-- duplicate_we8_11g_fnc (441)
+-- vGS11gWE8=bpad
+-- #######################
+
+cp Copy_Schema_ECORA_CGS12C.sql Copy_Schema_ECORA_bpad_11g.sql
+-- create SQLTUNE from another DB
+@/app/oracle/scripts/12cupgrade/Copy_Schema_ECORA_bpad_11g.sql
+@/app/oracle/scripts/12cupgrade/Copy_Schema_SQLTUNE_bpad_11g.sql
+alter user AUTODDL profile app_profile;
+alter user AUTODML profile app_profile;
+
+APP_PROFILE  PASSWORD_VERIFY_FUNCTION         NULL
+CNO_PROFILE  FAILED_LOGIN_ATTEMPTS            DEFAULT
+CNO_PROFILE  PASSWORD_GRACE_TIME              DEFAULT
+CNO_PROFILE  PASSWORD_LIFE_TIME               DEFAULT
+CNO_PROFILE  PASSWORD_LOCK_TIME               DEFAULT
+CNO_PROFILE  PASSWORD_REUSE_MAX               DEFAULT
+CNO_PROFILE  PASSWORD_REUSE_TIME              DEFAULT
+CNO_PROFILE  PASSWORD_VERIFY_FUNCTION         DEFAULT
+DEFAULT      PASSWORD_VERIFY_FUNCTION         NULL
+
+alter profile APP_PROFILE  limit PASSWORD_VERIFY_FUNCTION VERIFY_FUNCTION_CNO;
+alter profile CNO_PROFILE  limit FAILED_LOGIN_ATTEMPTS 3;
+alter profile CNO_PROFILE  limit PASSWORD_GRACE_TIME 0;
+alter profile CNO_PROFILE  limit PASSWORD_LIFE_TIME 90;
+alter profile CNO_PROFILE  limit PASSWORD_LOCK_TIME 1;
+alter profile CNO_PROFILE  limit PASSWORD_REUSE_MAX 3;
+alter profile CNO_PROFILE  limit PASSWORD_REUSE_TIME UNLIMITED;
+alter profile CNO_PROFILE  limit PASSWORD_VERIFY_FUNCTION VERIFY_FUNCTION_CNO;
+alter profile DEFAULT      limit PASSWORD_VERIFY_FUNCTION VERIFY_FUNCTION_CNO;
+
+alter user CDPM1K  profile CNO_PROFILE;
+alter user CDS1VA  profile CNO_PROFILE;
+alter user CDPBKG  profile CNO_PROFILE;
+alter user CDSNAK  profile CNO_PROFILE;
+alter user CDSMGG  profile CNO_PROFILE;
+alter user CDS9BV  profile CNO_PROFILE;
+alter user CDSMVV  profile CNO_PROFILE;
+alter user CDSDVK  profile CNO_PROFILE;
+alter user TBD94RA profile CNO_PROFILE;
+alter user CDPK2F  profile CNO_PROFILE;
+
+set echo off
+set lines 200
+set pages 0
+set trimspool on
+set feedback off
+spool bpad_drop_users.sql
+select 'DROP USER '||username||' CASCADE;' from dba_users where username not in
+('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT'
+,'CDPK2F','CDPTM2','CNOXGO','CNOZK7','COG71S','COGH4O','COGLG1','COGOTA','COGQEY','COGRCU','COGUGJ','COGVNU','COGVPF','COGVQP','COGY0L','COGZX6','ECORA','HPUCMDB','IDMUNX','INF_MM','SQLTUNE','TNS_USER')
+order by 1;
+spool off
+@bpad_drop_users.sql
+
+select role from dba_roles order by 1;
+
+set lines 200
+set pages 0
+set trimspool on
+set feedback off
+spool bpad_drop_roles.sql
+select 'DROP ROLE '||role||';' from dba_roles where role not in 
+('ADM_PARALLEL_EXECUTE_TASK','APEX_ADMINISTRATOR_ROLE','APEX_GRANTS_FOR_NEW_USERS_ROLE','APP_DBA_ROLE','APP_DEVELOPER_ROLE','AQ_ADMINISTRATOR_ROLE','AQ_USER_ROLE'
+,'AUDIT_ADMIN','AUDIT_VIEWER','AUTHENTICATEDUSER','AUTODDL_ADMIN','AUTODML_ADMIN','AWR_REPORT_ROLE','CAPTURE_ADMIN','CDB_DBA','CONNECT','CSW_USR_ROLE','CTXAPP'
+,'DATAPUMP_EXP_FULL_DATABASE','DATAPUMP_IMP_FULL_DATABASE','DBA','DBFS_ROLE','DELETE_CATALOG_ROLE','DV_ACCTMGR','DV_ADMIN','DV_AUDIT_CLEANUP','DV_DATAPUMP_NETWORK_LINK'
+,'DV_GOLDENGATE_ADMIN','DV_GOLDENGATE_REDO_ACCESS','DV_MONITOR','DV_OWNER','DV_PATCH_ADMIN','DV_PUBLIC','DV_REALM_OWNER','DV_REALM_RESOURCE','DV_SECANALYST'
+,'DV_STREAMS_ADMIN','DV_XSTREAM_ADMIN','EJBCLIENT','EM_EXPRESS_ALL','EM_EXPRESS_BASIC','EXECUTE_CATALOG_ROLE','EXP_FULL_DATABASE','GATHER_SYSTEM_STATISTICS'
+,'GDS_CATALOG_SELECT','GLOBAL_AQ_USER_ROLE','GSMADMIN_ROLE','GSMUSER_ROLE','GSM_POOLADMIN_ROLE','HS_ADMIN_EXECUTE_ROLE','HS_ADMIN_ROLE','HS_ADMIN_SELECT_ROLE'
+,'IMP_FULL_DATABASE','JAVADEBUGPRIV','JAVAIDPRIV','JAVASYSPRIV','JAVAUSERPRIV','JAVA_ADMIN','JAVA_DEPLOY','JMXSERVER','LBAC_DBA','LOGSTDBY_ADMINISTRATOR'
+,'OEM_ADVISOR','OEM_MONITOR','OLAP_DBA','OLAP_USER','OLAP_XS_ADMIN','OPTIMIZER_PROCESSING_RATE','ORDADMIN','PDB_DBA','PROD_DBA_ROLE','PROVISIONER'
+,'QUALYS_ROLE','RECOVERY_CATALOG_OWNER','RECOVERY_CATALOG_USER','RESOURCE','SCHEDULER_ADMIN','SECURITY_ADMIN_ROLE','SELECT_CATALOG_ROLE'
+,'SPATIAL_CSW_ADMIN','SPATIAL_WFS_ADMIN','WFS_USR_ROLE','WM_ADMIN_ROLE','XDBADMIN','XDB_SET_INVOKER','XDB_WEBSERVICES','XDB_WEBSERVICES_OVER_HTTP'
+,'XDB_WEBSERVICES_WITH_PUBLIC','XS_CACHE_ADMIN','XS_NAMESPACE_ADMIN','XS_RESOURCE','XS_SESSION_ADMIN')
+order by 1;
+spool off
+@bpad_drop_roles.sql
+
+select 'drop '||decode(OWNER,'PUBLIC','public',' ')||' database link '||DB_LINK||';' "STMT"
+from dba_db_links;
+
+-- prodm (lxorainvm01 / US7ASCII)
+-- works on UTF8
+CREATE OR REPLACE FUNCTION verify_function_CNO (
+*
+ERROR at line 1:
+ORA-65040: operation not allowed from within a pluggable database
+
+col owner format a30
+select VALUE from nls_database_parameters where PARAMETER='NLS_CHARACTERSET';
+select con_id, owner, object_type, ORACLE_MAINTAINED from cdb_objects where object_name='VERIFY_FUNCTION_CNO' order by 1,2,3;
+
+DB			CS				OracleManaged
+----------	--------		-
+idevt (sb)	US7ASCII		Y
+dsgd		AL32UTF8		N
+bparptt		WE8ISO8859P1	N
+gsascii(sb)	US7ASCII		Y
+
+-- gsascii
+alter session set "_oracle_script"=true;
+drop function VERIFY_FUNCTION_CNO;
+alter session set "_oracle_script"=false;
+@VERIFY_FUNCTION_CNO.fnc
+
+
+############# RMAN - restore/backup templates #####################
+
+Ver CharSet			Template	Example		VM
+--- --------------- ----------- ----------- -----------
+11g AL32UTF8		gs11g		fnp8t
+11g US7ASCII		gs11ascii	cigfdst
+11g WE8ISO8859P1	bpad		bpat
+12c AL32UTF8		cgs12c		hubm		LXORABPAM02
+12c US7ASCII		gsascii		lbillm		LXORABPAM02
+12c WE8ISO8859P1	cbpad		bparptm		LXORABPAM01
+
+-- backup locations
+/oragg/cgs12c
+/oragg/gs11ascii
+/oragg/gs11g
+/oragg/gs11we8
+/oragg/gsascii
+/oragg/gswe8
+
+/*--- rman restore ---*/
+mkdir /database/cigfdsd01
+mkdir /database/cigfdsd01/oradata
+mkdir /database/cigfdsd_admn01
+mkdir /database/cigfdsd_admn01/admin
+mkdir /database/cigfdsd_admn01/admin/audit
+mkdir /database/cigfdsd_admn01/admin/pfile
+mkdir /database/cigfdsd_admn01/admin/adump
+mkdir /database/cigfdsd_admn01/scripts
+mkdir /database/cigfdsd_arch01
+mkdir /database/cigfdsd_arch01/arch
+mkdir /database/cigfdsd_redo01
+mkdir /database/cigfdsd_redo01/oractl
+mkdir /database/cigfdsd_redo01/oralog
+mkdir /database/cigfdsd_redo02
+mkdir /database/cigfdsd_redo02/oractl
+mkdir /database/cigfdsd_redo02/oralog
+
+ll /database/bpad01/oradata
+ll /app/rman/gs11we8
+
+sed "s/<newcdb>/gsascii/g;s/<cdb_short>/gsascii/g" /app/oracle/scripts/init12c.ora > /app/oracle/product/db/12c/1/dbs/initgsascii.ora
+sed "s/<newdb>/bpad/g" /app/oracle/scripts/init11g.ora > /app/oracle/product/db/11g/1/dbs/initbpad.ora
+sed "s/<newdb>/bpad/g" /app/oracle/scripts/init11g.ora > /database/bpad_admn01/admin/pfile/initbpad.ora
+
+-- restore spfile
+rman target /
+STARTUP NOMOUNT;
+RESTORE SPFILE TO '/app/oracle/product/db/11g/1/dbs/spfilebpad.ora' FROM '/app/rman/gs11we8/control_BPAD_c-2059117997-20170628-02';
+
+-- restore controlfile
+STARTUP FORCE NOMOUNT;
+RUN 
+{
+  ALLOCATE CHANNEL c1 DEVICE TYPE disk;
+  RESTORE CONTROLFILE FROM '/app/rman/gsascii/control_GSASCII_c-1925577664-20170928-00';
+  ALTER DATABASE MOUNT;
+}
+
+RESTORE DATABASE;
+RECOVER DATABASE;
+ALTER DATABASE OPEN RESETLOGS;
+
+/*--- rman backup ---*/
+ll /app/rman/cgs12c
+rm /app/rman/cgs12c/*
+
+rman target /
+delete backupset completed before 'sysdate';
+crosscheck backupset;
+delete expired backupset;
+run
+{
+	shutdown immediate;
+	startup mount;
+	ALLOCATE CHANNEL c1 DEVICE TYPE DISK FORMAT '/app/rman/cgs12c/%d_%T_%s_%I_%u';
+	backup as compressed backupset incremental level 0 database INCLUDE CURRENT CONTROLFILE;
+	backup spfile;
+}
+shutdown immediate;
+
+-- from linux VM
+ll /oragg/cgs12c
+mv /oragg/cgs12c/* /oragg/cgs12c/archive
+
+-- from lxora12cinfs02
+scp /app/rman/cgs12c/* lxorainfm01:/oragg/cgs12c
+
+
+
+
+############# dbfile_add_lx.sh #####################
+
+-- cidevt SB
+select substr(version,1,instr(version,'.')-1) from v$instance;
+
+ALTER TABLESPACE LOGON_AUDIT_DATA ADD DATAFILE '/database/cidevt01/oradata/LOGON_AUDIT_DATA_02.dbf' SIZE 100M AUTOEXTEND ON NEXT 100M MAXSIZE 32000M;
+alter database datafile '/database/cidevt01/oradata/users01.dbf' resize 1433600;
+ALTER DATABASE DATAFILE '/database/cidevt01/oradata/users01.dbf' AUTOEXTEND OFF;
+
+    CON_ID FILE_ID FILE_NAME                                                            MB      MaxMB AUT
+---------- ------- ------------------------------------------------------------ ---------- ---------- ---
+         1      12 /database/cidevt01/oradata/LOGON_AUDIT_DATA_01.dbf                  100     32,000 YES
+         1      26 /database/cidevt01/oradata/LOGON_AUDIT_DATA_02.dbf                  100     32,000 YES
+         3      25 /database/idevt01/oradata/LOGON_AUDIT_DATA_01.dbf                   100     32,000 YES
+                                                                                ---------- ----------
+TOTAL                                                                                  300     96,000
+
+    CON_ID FILE_ID FILE_NAME                                                            MB      MaxMB AUT
+---------- ------- ------------------------------------------------------------ ---------- ---------- ---
+         1       6 /database/cidevt01/oradata/users01.dbf                                1          1 NO
+         3      16 /database/idevt01/oradata/users01.dbf                                50     32,000 YES
+                                                                                ---------- ----------
+TOTAL                                                                                   51     32,001
+
+select ddf.file_name 
+from CDB_DATA_FILES ddf,
+(select df.con_id, df.tablespace_name, max(df.file_id) max_file
+ from CDB_DATA_FILES df,
+	(select cdf.con_id, sts.tablespace_name, count(cdf.file_name)
+	 from CDB_DATA_FILES cdf, dba_tablespaces sts
+	 where cdf.tablespace_name=sts.tablespace_name and cdf.autoextensible='YES' and sts.status='ONLINE'
+	 group by cdf.con_id, sts.tablespace_name
+	 having count(cdf.file_name)>1) ts
+ where df.tablespace_name=ts.tablespace_name and df.autoextensible='YES' and df.con_id=ts.con_id
+ group by df.con_id, df.tablespace_name) mf
+where ddf.tablespace_name=mf.tablespace_name(+) and autoextensible='YES'
+  and ddf.file_id!=mf.max_file and ddf.con_id=mf.con_id;
+  
+select distinct ts.tablespace_name
+select df.con_id, ts.tablespace_name, df.file_name, (df.bytes/decode(df.maxbytes,0,bytes,maxbytes)) "PCTUSED"
+from CDB_DATA_FILES df, cdb_tablespaces ts
+where df.tablespace_name=ts.tablespace_name and df.con_id=ts.con_id
+  and ts.status='ONLINE' and (df.bytes/decode(df.maxbytes,0,bytes,maxbytes)) > 0.75 --and df.autoextensible='YES'
+  and (df.con_id, ts.tablespace_name) not in
+	(select d.con_id, d.tablespace from
+		(select b.con_id, b.tablespace_name tablespace, round (sum(nvl(b.bytes/1024/1024,0))) allocated
+		 from CDB_DATA_FILES b
+		 group by b.con_id, b.tablespace_name
+		) d ,
+		(select a.con_id, a.tablespace_name tabsp, round(sum(nvl(a.bytes/1024/1024,0))) unused
+		 from cdb_free_space a
+		 group by a.con_id, a.tablespace_name
+		) f
+	 where d.con_id=f.con_id and f.tabsp(+) = d.tablespace and (f.unused/d.allocated) > 0.25
+	);
+
+--select distinct (d.tablespace) tablespace_name from
+select d.con_id, d.tablespace from
+		(select b.con_id, b.tablespace_name tablespace, round (sum(nvl(b.bytes/1024/1024,0))) allocated
+		 from CDB_DATA_FILES b
+		 group by b.con_id, b.tablespace_name
+		) d ,
+		(select a.con_id, a.tablespace_name tabsp, round(sum(nvl(a.bytes/1024/1024,0))) unused
+		 from cdb_free_space a
+		 group by a.con_id, a.tablespace_name
+		) f
+	 where d.con_id=f.con_id and f.tabsp(+) = d.tablespace and (f.unused/d.allocated) > 0.25
+order by 1,2;
+
+    CON_ID TABLESPACE                      PCTUNUSED
+---------- ------------------------------ ----------
+         1 LOGON_AUDIT_DATA                      .99
+         1 TOOLS                                   1
+         1 UNDO                           .942528736
+         3 CONFLUENCE_D                    .99983724
+         3 CRUCIBLE_D                     .999804688
+         3 GGS                                  .862
+         3 JIRA_D                          .99983724
+         3 LOGON_AUDIT_DATA                      .98
+         3 SONAR_D                        .999869792
+         3 TOOLS                                 .99
+         3 USERS                                 .98
+         3 XDB                                  .995
+
+SYSAUX
+SYSTEM
+USERS
+
+		 
+############# New DB Script #####################
+
+-- only prod needs archive mount
+
+-- build template DB
+
+
+############# GG_0_autostart #####################
+
+make cron job
+email results
+
+
+############# Build_RMAN12_Linux.sh #####################
+
+-- lxora12cinfs02
+mkdir /database/crman12s01
+mkdir /database/crman12s_admn01
+mkdir /database/crman12s_arch01
+mkdir /database/crman12s_redo01
+mkdir /database/crman12s_redo02
+mkdir /database/rman12s
+mkdir /database/rman/oratinfbkp001
+
+
+############# version check #####################
+
+# Call function to run duplicate process
+if [[ $vDBVersion -eq 12 ]]
+then
+
+else
+
+fi
+	
+
+############# SQL Plan Management #####################
+
+-- idevp (uxs33)
+set lines 150 pages 200
+col sql_handle format a30
+col plan_name format a30
+col sql_text format a40
+select sql_handle, plan_name, origin, enabled, accepted, fixed, autopurge, to_char(last_modified,'MM/DD/RR') "MODIFIED", to_char(last_executed,'MM/DD/RR') "EXECUTED"
+from dba_sql_plan_baselines
+where enabled='YES' and accepted='YES'
+order by 1;
+1521 rows selected.
+
+select min(last_modified) from dba_sql_plan_baselines where enabled='YES' and accepted='YES';
+MIN(LAST_MODIFIED)
+---------------------------------------------------------------------------
+17-JAN-16 01.08.04.000000 AM
+
+
+-- idevp (lxora12cinfs02)
+626 rows selected.
+
+MIN(LAST_MODIFIED)
+---------------------------------------------------------------------------
+05-APR-18 05.47.30.000000 PM
+
+
+-- idevp (uxs33)
+set serveroutput on
+exec DBMS_SPM.CREATE_STGTAB_BASELINE ('STGTAB_BASELINE','GGTEST','GGS');
+
+select count(*) from GGTEST.STGTAB_BASELINE;
+0
+
+declare
+	my_plans	pls_integer;
+begin
+	my_plans := DBMS_SPM.PACK_STGTAB_BASELINE (
+		table_name	=> 'STGTAB_BASELINE',
+		table_owner	=> 'GGTEST',
+		enabled		=> 'YES',
+		accepted	=> 'YES');
+	dbms_output.put_line('Plans loaded: '||my_plans);
+end;
+/
+
+select count(*) from GGTEST.STGTAB_BASELINE;
+1521
+(matches above)
+
+-- uxs33
+expdp \"/ as sysdba\" DIRECTORY=CNO_MIGRATE DUMPFILE=STGTAB_BASELINE.dmp LOGFILE=STGTAB_BASELINE_exp.log CONTENT=ALL TABLES=GGTEST.STGTAB_BASELINE
+
+scp /backup_uxs33/dpdump/datapump/idevp/STGTAB_BASELINE.dmp lxora12cinfs02:/database/oragg/datapump/idevp
+
+-- lxora12cinfs02
+sudo su -
+chmod 777 /database/oragg/datapump/idevp/STGTAB_BASELINE.dmp
+impdp \"system@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=LXORA12CINFS02.conseco.ad)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=idevp)))\" DIRECTORY=CNO_MIGRATE DUMPFILE=STGTAB_BASELINE.dmp LOGFILE=STGTAB_BASELINE_imp.log CONTENT=ALL
+
+-- idevp (lxora12cinfs02)
+alter session set container=idevp;
+set lines 150 pages 200
+set serveroutput on
+
+select count(*) from GGTEST.STGTAB_BASELINE;
+1521
+
+select count(*) from dba_sql_plan_baselines where enabled='YES' and accepted='YES';
+626
+
+DBMS_SPM.UNPACK_STGTAB_BASELINE (
+   table_name       IN VARCHAR2,
+   table_owner      IN VARCHAR2 := NULL,
+   sql_handle       IN VARCHAR2 := NULL,
+   plan_name        IN VARCHAR2 := NULL,
+   sql_text         IN CLOB     := NULL,
+   creator          IN VARCHAR2 := NULL,   origin           IN VARCHAR2 := NULL,
+   enabled          IN VARCHAR2 := NULL,
+   accepted         IN VARCHAR2 := NULL,
+   fixed            IN VARCHAR2 := NULL,
+   module           IN VARCHAR2 := NULL,
+   action           IN VARCHAR2 := NULL)
+RETURN NUMBER;
+
+DECLARE
+	my_plans	number;
+BEGIN
+	my_plans := DBMS_SPM.UNPACK_STGTAB_BASELINE(
+		table_name	=> 'STGTAB_BASELINE',
+		table_owner	=> 'GGTEST'
+	);
+	dbms_output.put_line('Plans unloaded: '||my_plans);
+END;
+/
+Plans unloaded: 1521
+PL/SQL procedure successfully completed.
+
+select count(*) from dba_sql_plan_baselines where enabled='YES' and accepted='YES';
+1624
+
+select count(*) from dba_sql_plan_baselines where enabled='YES' and accepted='YES' and last_modified>(sysdate-1/24);
+1523
+
+col sql_handle format a30
+col plan_name format a30
+col sql_text format a40
+select sql_handle, plan_name, origin, enabled, accepted, fixed, autopurge, to_char(last_modified,'MM/DD/RR') "MODIFIED", to_char(last_executed,'MM/DD/RR') "EXECUTED"
+from dba_sql_plan_baselines
+where enabled='YES' and accepted='YES'
+order by 1;
+SQL_HANDLE                     PLAN_NAME                      ORIGIN         ENA ACC FIX AUT MODIFIED EXECUTED
+------------------------------ ------------------------------ -------------- --- --- --- --- -------- --------
+SQL_f8d38e0d3d1d3a62           SQL_PLAN_gjnwf1nyjufm2d87d0144 AUTO-CAPTURE   YES YES NO  YES 04/18/18
+SQL_f8da28019f0615ff           SQL_PLAN_gjqj806ghc5gz3b90eb94 AUTO-CAPTURE   YES YES NO  YES 04/18/18
+SQL_f93da30bf1f2b6a5           SQL_PLAN_gkgd31gsz5dp57d755bfe AUTO-CAPTURE   YES YES NO  YES 04/18/18
+SQL_f9469abba04cce34           SQL_PLAN_gkjnurfh4tmjn1b4f8f21 AUTO-CAPTURE   YES YES NO  YES 04/18/18
+SQL_f960ca3d1a5732c9           SQL_PLAN_gks6a7nd5fcq9fd47cf39 AUTO-CAPTURE   YES YES NO  YES 04/18/18
+SQL_f97619b5cd5d6505           SQL_PLAN_gkxhtqr6put854bbae5a1 AUTO-CAPTURE   YES YES NO  YES 04/12/18 04/12/18
+...
+
+
+############# SQL Profiles #####################
+
+-- idevp (uxs33)
+set lines 150 pages 200
+set serveroutput on
+col name format a30
+select name, type, status, to_char(created,'MM/DD/RR') "CREATED", to_char(last_modified,'MM/DD/RR') "MODIFIED"
+from dba_sql_profiles order by 1;
+57
+
+EXEC DBMS_SQLTUNE.CREATE_STGTAB_SQLPROF ('PROFILE_STGTAB', 'GGTEST', 'GGS');
+EXEC DBMS_SQLTUNE.PACK_STGTAB_SQLPROF (profile_category => '%', staging_table_name => 'PROFILE_STGTAB', staging_schema_owner => 'GGTEST');
+
+-- uxs33
+expdp \"/ as sysdba\" DIRECTORY=CNO_MIGRATE DUMPFILE=PROFILE_STGTAB.dmp LOGFILE=PROFILE_STGTAB_exp.log CONTENT=ALL TABLES=GGTEST.PROFILE_STGTAB
+
+scp /backup_uxs33/dpdump/datapump/idevp/PROFILE_STGTAB.dmp lxora12cinfs02:/database/oragg/datapump/idevp
+
+-- lxora12cinfs02
+sudo su -
+chmod 777 /database/oragg/datapump/idevp/PROFILE_STGTAB.dmp
+impdp \"system@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=LXORA12CINFS02.conseco.ad)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=idevp)))\" DIRECTORY=CNO_MIGRATE DUMPFILE=PROFILE_STGTAB.dmp LOGFILE=PROFILE_STGTAB_imp.log CONTENT=ALL
+
+-- idevp (lxora12cinfs02)
+alter session set container=idevp;
+set lines 150 pages 200
+set serveroutput on
+
+select count(*) from dba_sql_profiles;
+0
+
+select count(*) from GGTEST.PROFILE_STGTAB;
+57
+
+EXEC DBMS_SQLTUNE.UNPACK_STGTAB_SQLPROF(replace => TRUE, staging_table_name => 'PROFILE_STGTAB', staging_schema_owner => 'GGTEST');
+
+select count(*) from dba_sql_profiles;
+57
+
+NAME                           TYPE    STATUS   CREATED  MODIFIED
+------------------------------ ------- -------- -------- --------
+SYS_SQLPROF_0138b0be13cd0000   AUTO    ENABLED  04/18/18 04/18/18
+SYS_SQLPROF_0138b0be428b0001   AUTO    ENABLED  04/18/18 04/18/18
+SYS_SQLPROF_0138b6bc22100002   AUTO    ENABLED  04/18/18 04/18/18
+...
+
+
+############# dbora #####################
+
+-- Master Note for Database Startup/Shutdown (Doc ID 1270450.1)
+1. Determine if instance starts manually as Oracle software owner.
+2. Determine if instance starts via dbstart command run as Oracle software owner.
+3. Determine if instance starts when root runs following dbstart command:
+su - $ORA_OWNER -c $ORA_HOME/bin/dbstart
+
+where $ORA_OWNER is set to Oracle software owner.
+4. Determine if instance starts when running as root the OS script which calls dbstart, ie "/etc/init.d/dbora start". NOTE: Running via sh -x command will show each command as it is run from script to better see what is going on.
+#> sh -x /etc/init.d/dbora start
+
+
+-- Notes
+1. Comment out listener section in 11g script
+2. Remove 11g home from dbora script
+
+
+/*--- lxora12cinfs02 ---*/
+
+ccds_fop
+cdsgd
+cidevp
+utf11g16
+
+-- /etc/oratab
+cinfdqd:/app/oracle/product/db/12c/1:Y
+ccds_fop:/app/oracle/product/db/12c/1:Y
+cdsgd:/app/oracle/product/db/12c/1:Y
+cidevp:/app/oracle/product/db/12c/1:Y
+utf11g16:/app/oracle/product/db/11g/1:Y
+
+-- root
+cp /etc/init.d/dbora /etc/init.d/dbora.20170428
+vi /etc/init.d/dbora
+(remove calls to 11g home)
+
+sh -x /etc/init.d/dbora stop
+Processing Database instance "cinfdqd": log file /app/oracle/product/db/12c/1/shutdown.log
+Processing Database instance "ccds_fop": log file /app/oracle/product/db/12c/1/shutdown.log
+Processing Database instance "cdsgd": log file /app/oracle/product/db/12c/1/shutdown.log
+Processing Database instance "cidevp": log file /app/oracle/product/db/12c/1/shutdown.log
+Processing Database instance "utf11g16": log file /app/oracle/product/db/11g/1/shutdown.log
+There are 0 (LXORA12CINFS02) databases running on Tue Jul 31, 2018, at 14:00:24
+
+sh -x /etc/init.d/dbora start
+Processing Database instance "cinfdqd": log file /app/oracle/product/db/12c/1/startup.log
+Processing Database instance "ccds_fop": log file /app/oracle/product/db/12c/1/startup.log
+Processing Database instance "cdsgd": log file /app/oracle/product/db/12c/1/startup.log
+Processing Database instance "cidevp": log file /app/oracle/product/db/12c/1/startup.log
+Processing Database instance "utf11g16": log file /app/oracle/product/db/11g/1/startup.log
+ccds_fop
+cdsgd
+cidevp
+utf11g16
+There are 4 (LXORA12CINFS02) databases running on Tue Jul 31, 2018, at 14:07:02
+
+STATUS of the LISTENER
+------------------------
+Alias                     LISTENER
+Version                   TNSLSNR for Linux: Version 12.1.0.2.0 - Production
+Start Date                31-JUL-2018 14:01:38
+Service "CCDS_FOP" has 1 instance(s).
+  Instance "ccds_fop", status READY, has 1 handler(s) for this service...
+Service "CDSGD" has 1 instance(s).
+  Instance "cdsgd", status READY, has 1 handler(s) for this service...
+Service "CIDEVP" has 1 instance(s).
+  Instance "cidevp", status READY, has 1 handler(s) for this service...
+Service "cdsinfop" has 1 instance(s).
+  Instance "ccds_fop", status READY, has 1 handler(s) for this service...
+Service "dsgd" has 1 instance(s).
+  Instance "cdsgd", status READY, has 1 handler(s) for this service...
+Service "idevp" has 1 instance(s).
+  Instance "cidevp", status READY, has 1 handler(s) for this service...
+Service "utf11g16" has 1 instance(s).
+  Instance "utf11g16", status READY, has 1 handler(s) for this service...
+
+  
+############# DB Resources #####################
+
+-- get disk sizes
+col "MB" format 9,999,990
+col "MaxMB" format 9,999,990
+col disk format a40
+break on report;
+compute sum label "TOTAL" of "MB" "MaxMB" on REPORT;
+select disk, sum(bytes/1024/1024) "MB", sum((decode(maxbytes,0,bytes,maxbytes)/1024/1024)) "MaxMB"
+from (
+    select substr(file_name,1,instr(file_name,'/',-1)-1) disk, bytes, maxbytes
+    from dba_data_files
+    union all
+    select substr(file_name,1,instr(file_name,'/',-1)-1) disk, bytes, maxbytes
+    from dba_temp_files
+) group by disk order by disk;
+
+-- check spfile settings
+col name format a30
+col display_value format a15
+select name, display_value from v$spparameter
+where name in ('sga_max_size','sga_target','memory_max_target','memory_target','pga_aggregate_target')
+and display_value is not null
+order by 1;
+
+
+if [[ vEncrypt = 'FALSE' ]]
+then
+
+
+############# DSRP w/o GG #####################
+
+*** refresh mviews 
+
+-- idevp - lxorainfs02
+col owner format a30
+col mview_name format a30
+select owner, mview_name, updatable, last_refresh_date, staleness, stale_since
+from dba_mviews
+where owner not in
+('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS','PUBLIC')
+order by 1,2;
+OWNER                          MVIEW_NAME                     U LAST_REFRE STALENESS           STALE_SINC
+------------------------------ ------------------------------ - ---------- ------------------- ----------
+CNOZK7                         MV1                            N 10/01/2018 FRESH
+CNOZK7                         MV2                            N 10/01/2018 FRESH
+
+set long 10000
+select query from dba_mviews where mview_name='MV1';
+QUERY
+--------------------------------------------------------------------------------
+select t1.user_id, t2.owner, t2.table_name
+   from t1, t2
+   where t1.username=t2.owner
+
+select * from cnozk7.mv1 where owner='JIRA';
+173 rows selected.
+
+delete from cnozk7.t2 where owner='JIRA';
+173 rows deleted.
+
+commit;
+
+OWNER                          MVIEW_NAME                     U LAST_REFRE STALENESS           STALE_SINC
+------------------------------ ------------------------------ - ---------- ------------------- ----------
+CNOZK7                         MV1                            N 10/01/2018 NEEDS_COMPILE
+CNOZK7                         MV2                            N 10/01/2018 FRESH
+
+
+EXECUTE DBMS_MVIEW.REFRESH(LIST=>'CAIRO.BENCHMARK_RATES_VIEW',PARALLELISM=>4);
+select 'EXECUTE DBMS_MVIEW.REFRESH(LIST=>'''||owner||'.'||mview_name||''',PARALLELISM=>4)' from dba_mviews
+where owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS','PUBLIC')
+;
+
+set serveroutput on
+BEGIN
+  FOR i IN
+    (select 'EXECUTE DBMS_MVIEW.REFRESH(LIST=>'''||owner||'.'||mview_name||''',PARALLELISM=>4)' cmd from dba_mviews
+	 where owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS','PUBLIC')
+	)
+  LOOP
+	dbms_output.put_line(i.cmd);
+	execute immediate i.cmd;
+  END LOOP;
+END;
+/
+ORA-00900: invalid SQL statement
+
+DECLARE
+  CURSOR c1 IS
+	select owner||'.'||mview_name "MVIEW_NAME"
+	from dba_mviews
+	where owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS','PUBLIC');
+BEGIN
+	for rmv2ref in c1 loop
+		begin
+			dbms_mview.refresh(rmv2ref.MVIEW_NAME);
+			dbms_output.put_line(rmv2ref.MVIEW_NAME ||' refreshed at '|| to_char(systimestamp));
+		exception
+		when others then
+			dbms_output.put_line(rmv2ref.MVIEW_NAME ||' Errored at '|| to_char(systimestamp));
+			dbms_output.put_line('    Error: '|| sqlcode ||':'||sqlerrm);
+		end;
+	end loop;
+END;
+/
+CNOZK7.MV1 refreshed at 02-OCT-18 09.42.22.604076000 AM -04:00
+CNOZK7.MV2 refreshed at 02-OCT-18 09.42.22.694582000 AM -04:00
+
+OWNER                          MVIEW_NAME                     U LAST_REFRE STALENESS           STALE_SINC
+------------------------------ ------------------------------ - ---------- ------------------- ----------
+CNOZK7                         MV1                            N 10/02/2018 FRESH
+CNOZK7                         MV2                            N 10/02/2018 FRESH
+
+select * from cnozk7.mv1 where owner='SYS';
+1012 rows selected.
+
+delete from cnozk7.t2 where owner='SYS';
+commit;
+
+OWNER                          MVIEW_NAME                     U LAST_REFRE STALENESS           STALE_SINC
+------------------------------ ------------------------------ - ---------- ------------------- ----------
+CNOZK7                         MV1                            N 10/02/2018 NEEDS_COMPILE
+CNOZK7                         MV2                            N 10/02/2018 FRESH
+
+
+############# Downgrade 12c to 11g #####################
+
+vRowTable12c="row_count_12c"
+vObjectTable12c="object_count_12c"
+vIndexTable12c="index_count_12c"
+vConstraintTable12c="constraint_count_12c"
+vPrivilegeTable12c="priv_count_12c"
+vColPrivTable12c="col_priv_count_12c"
+vRolesTable12c="role_count_12c"
+vQuotaTable12c="quota_12c"
+vProxyUsersTable12c="proxy_users_12c"
+vPubPrivTable12c="pub_privs_12c"
+vTriggerTable12c="triggers_12c"
+vParamTable12c="parameters_12c"
+vIndexSysGenTable12c="index_sys_gen_12c"
+vLOBSysGenTable12c="lob_sys_gen_12c"
+vNLSParamTable12c="nls_param_12c"
+vSequenceTable12c="sequences_12c"
+
+# 11g comparison tables
+vRowTable11g="row_count_11g"
+vObjectTable11g="object_count_11g"
+vIndexTable11g="index_count_11g"
+vConstraintTable11g="constraint_count_11g"
+vPrivilegeTable11g="priv_count_11g"
+vColPrivTable11g="col_priv_count_11g"
+vRolesTable11g="role_count_11g"
+vQuotaTable11g="quota_11g"
+vProxyUsersTable11g="proxy_users_11g"
+vPubPrivTable11g="pub_privs_11g"
+vTriggerTable11g="triggers_11g"
+vParamTable11g="parameters_11g"
+vIndexSysGenTable11g="index_sys_gen_11g"
+vLOBSysGenTable11g="lob_sys_gen_11g"
+vNLSParamTable11g="nls_param_11g"
+vSequenceTable11g="sequences_11g"
+
+vTriggerTable11g
+vParamTable11g
+vIndexSysGenTable11g
+vLOBSysGenTable11g
+vNLSParamTable11g
+vSequenceTable11g
+
+
+*** initialization parameters ***
+
+select name, value
+from v$parameter
+where name not like '%dest%'
+and name not in ('compatible','control_files','db_name','db_unique_name','dg_broker_config_file1','dg_broker_config_file2','instance_name','optimizer_features_enable','os_authent_prefix','service_names','spfile')
+and value is not null;
+
+
+*** SQL plan / baseline tables ***
+
+exec DBMS_SPM.CREATE_STGTAB_BASELINE ('STGTAB_BASELINE','GGS','USERS');
+set serveroutput on
+declare
+	my_plans	pls_integer;
+begin
+	my_plans := DBMS_SPM.PACK_STGTAB_BASELINE (
+		table_name	=> 'STGTAB_BASELINE',
+		table_owner	=> 'GGS',
+		enabled		=> 'YES',
+		accepted	=> 'YES');
+	dbms_output.put_line('Plans loaded: '||my_plans);
+end;
+/
+select count(*) from GGS.STGTAB_BASELINE;
+truncate table GGS.STGTAB_BASELINE;
+
+select PARSING_SCHEMA_NAME, sql_handle
+from GGS.STGTAB_BASELINE
+order by PARSING_SCHEMA_NAME;
+
+alter session set container=idevp;
+truncate table GGTEST.STGTAB_BASELINE;
+drop table GGTEST.STGTAB_BASELINE;
+exec DBMS_SPM.CREATE_STGTAB_BASELINE ('STGTAB_BASELINE','GGTEST','USERS');
+declare
+	my_plans	pls_integer;
+begin
+	my_plans := DBMS_SPM.PACK_STGTAB_BASELINE (
+		table_name	=> 'STGTAB_BASELINE',
+		table_owner	=> 'GGTEST',
+		enabled		=> 'YES',
+		accepted	=> 'YES');
+	dbms_output.put_line('Plans loaded: '||my_plans);
+end;
+/
+ORA-00904: "OTHER_XML": invalid identifier
+ORA-06512: at "SYS.DBMS_SMB", line 789
+ORA-06512: at "SYS.DBMS_SPM", line 2229
+ORA-06512: at line 4
+
+select count(*) from GGTEST.STGTAB_BASELINE;
+
+
+truncate table GGTEST.PROFILE_STGTAB;
+EXEC DBMS_SQLTUNE.PACK_STGTAB_SQLPROF (profile_category => '%', staging_table_name => 'PROFILE_STGTAB', staging_schema_owner => 'GGTEST');
+(same error)
+
+
+*** TEMP space ***
+
+ALTER TABLESPACE TEMP ADD TEMPFILE '/database/Eidevp/idevp01/oradata/temp02.dbf' SIZE 209715200
+*
+ERROR at line 1:
+ORA-01119: error in creating database file '/database/Eidevp/idevp01/oradata/temp02.dbf'
+ORA-27040: file create error, unable to create file
+
+alter session set container=idevp;
+set lines 150 pages 200
+col file_name format a80
+select file_name,
+case substr(dtf.FILE_NAME,-6,2)
+	--when '01' then 'ALTER DATABASE TEMPFILE ''/database/custsvcp01/oradata'||substr(dtf.FILE_NAME,instr(dtf.FILE_NAME,'/',-1))||''' RESIZE '||dtf.BYTES||';'
+	when '01' then 'ALTER DATABASE TEMPFILE '''||dtf.FILE_NAME||''' RESIZE '||dtf.BYTES||';'
+	else 'ALTER TABLESPACE TEMP ADD TEMPFILE '''||replace(dtf.FILE_NAME,'/database/','/database/')||''' SIZE '||dtf.BYTES||';'
+	end "STMT"
+from DBA_TEMP_FILES dtf
+where dtf.TABLESPACE_NAME='TEMP';
+
+select file_name,
+case substr(dtf.FILE_NAME,-6,2)
+	when '01' then 'ALTER DATABASE TEMPFILE '''||dtf.FILE_NAME||''' RESIZE '||dtf.BYTES||';'
+	else 'ALTER TABLESPACE TEMP ADD TEMPFILE '''||FILE_NAME||''' SIZE '||dtf.BYTES||';'
+	end "STMT"
+from DBA_TEMP_FILES dtf
+where dtf.TABLESPACE_NAME='TEMP';
+
+
+*** UNDO ***
+
+select file_name, case
+	when SHORT_NAME='undo01.dbf' then
+		case
+			--when BYTES > 209715200 then 'ALTER DATABASE DATAFILE '''||replace(FILE_NAME,'/database/${vCDBName}01','/database/${vPDBName}01')||''' RESIZE '||BYTES||';'
+			--when BYTES > 209715200 then 'ALTER DATABASE DATAFILE '''||replace(FILE_NAME,'cidevp01','idevp01')||''' RESIZE '||BYTES||';'
+			when BYTES > 209715200 then 'ALTER DATABASE DATAFILE '''||replace(replace(FILE_NAME,'cidevp01','idevp01'),'/Ecidevp/','/Eidevp/')||''' RESIZE '||BYTES||';'
+			else '-- undo01.dbf is less than 200 MB'
+		end
+	--else 'ALTER TABLESPACE '||TABLESPACE_NAME||' ADD DATAFILE '''||replace(FILE_NAME,'/database/${vCDBName}01','/database/${vPDBName}01')||''' SIZE '||BYTES||';'
+	--else 'ALTER TABLESPACE '||TABLESPACE_NAME||' ADD DATAFILE '''||replace(FILE_NAME,'cidevp01','idevp01')||''' SIZE '||BYTES||';'
+	else 'ALTER TABLESPACE '||TABLESPACE_NAME||' ADD DATAFILE '''||replace(replace(FILE_NAME,'cidevp01','idevp01'),'/Ecidevp/','/Eidevp/')||''' SIZE '||BYTES||';'
+end "STMT"
+from
+	(select dbf.FILE_NAME, substr(dbf.FILE_NAME,instr(dbf.FILE_NAME,'/',-1)+1) "SHORT_NAME",
+	 tbs.TABLESPACE_NAME, dbf.BYTES
+	 from DBA_TABLESPACES tbs, DBA_DATA_FILES dbf
+	 where tbs.TABLESPACE_NAME=dbf.TABLESPACE_NAME
+	 and tbs.TABLESPACE_NAME='UNDO')
+order by 1;
+
+
+*** TABLESPACES ***
+
+select dbf.file_name, --'CREATE TABLESPACE '||tbs.TABLESPACE_NAME||' DATAFILE '''||
+'CREATE TABLESPACE '||tbs.TABLESPACE_NAME||' DATAFILE '''||dbf.file_name||
+	--case
+	----when dbf.FILE_NAME like '/database/${vPDBName}%' then replace(dbf.FILE_NAME,'/database/','/database/')
+	--when dbf.FILE_NAME like '/database/idevp%' then replace(dbf.FILE_NAME,'/database/','/database/')
+	----else '/database/${vPDBName}01/oradata/'||SUBSTR(dbf.FILE_NAME,INSTR(dbf.FILE_NAME,'/',-1)+1)||''
+	--else '/database/idevp01/oradata/'||SUBSTR(dbf.FILE_NAME,INSTR(dbf.FILE_NAME,'/',-1)+1)||''
+	--end ||
+	''' SIZE '||to_char(dbf.BYTES)||
+	case
+	when dbf.BYTES > 33554432000 then ' AUTOEXTEND ON NEXT 256M MAXSIZE '||to_char(dbf.BYTES)
+	else ' AUTOEXTEND ON NEXT 256M MAXSIZE 32000M '
+	end ||
+	'EXTENT MANAGEMENT '
+	||tbs.EXTENT_MANAGEMENT|| ' UNIFORM SIZE 1048576 SEGMENT SPACE MANAGEMENT '||tbs.SEGMENT_SPACE_MANAGEMENT||';' "STMT"
+from DBA_TABLESPACES tbs, DBA_DATA_FILES dbf,
+	(select min(FILE_ID) MIN_FILE, TABLESPACE_NAME
+	from DBA_DATA_FILES
+	group by TABLESPACE_NAME) mf
+where tbs.TABLESPACE_NAME=dbf.TABLESPACE_NAME and mf.MIN_FILE=dbf.FILE_ID
+and tbs.TABLESPACE_NAME not in ('SYSTEM','SYSAUX','USERS','UNDO','TOOLS','LOGON_AUDIT_DATA')
+order by tbs.TABLESPACE_NAME;
+
+select dbf.FILE_NAME, 
+'ALTER TABLESPACE '||tbs.TABLESPACE_NAME||' ADD DATAFILE '''||dbf.FILE_NAME||''' SIZE '||to_char(dbf.BYTES)||
+	case
+		when dbf.BYTES > 33554432000 then ' AUTOEXTEND ON NEXT 256M MAXSIZE '||to_char(dbf.BYTES)
+		else ' AUTOEXTEND ON NEXT 256M MAXSIZE 32000M '
+	end ||';' "STMT"
+from DBA_TABLESPACES tbs, DBA_DATA_FILES dbf
+where tbs.TABLESPACE_NAME=dbf.TABLESPACE_NAME and (dbf.FILE_ID, tbs.TABLESPACE_NAME) not in
+	(select min(FILE_ID) MIN_FILE, TABLESPACE_NAME
+	from DBA_DATA_FILES
+	group by TABLESPACE_NAME)
+and tbs.TABLESPACE_NAME not in ('SYSTEM','SYSAUX','USERS','UNDO','TOOLS')
+order by 1;
+
+
+*** NLS_DATE_FORMAT ***
+
+PARAMETER                                12c-VALUE                                          11g-VALUE
+---------------------------------------- -------------------------------------------------- --------------------------------------------------
+NLS_DATE_FORMAT                          MM/DD/YYYY                                         DD-MON-RR
+
+set lines 150 pages 200
+col parameter format a30
+col value format a40
+select * from nls_database_parameters where parameter='NLS_DATE_FORMAT';
+PARAMETER                      VALUE
+------------------------------ ----------------------------------------
+NLS_DATE_FORMAT                DD-MON-RR
+
+select * from nls_instance_parameters where parameter='NLS_DATE_FORMAT';
+PARAMETER                      VALUE
+------------------------------ ----------------------------------------
+NLS_DATE_FORMAT                MM/DD/YYYY
+
+sho parameter date
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+nls_date_format                      string      MM/DD/YYYY
+
+-- How to set NLS_DATE_FORMAT (Doc ID 1048554.6)
+If the NLS_DATE_FORMAT found in
+SQL>select * from NLS_DATABASE_PARAMETERS;
+then this the NLS_DATE_FORMAT parameter set in the init.ora during database creation. There is no way to change NLS_DATABASE_PARAMETERS after the database creation.
+
+col "INSTANCE" format a30
+col "11g-VALUE" format a30
+col "12c-VALUE" format a30
+select aix.parameter, inst.value "INSTANCE", aix.value "12c-VALUE", lx.value "11g-VALUE"
+from ggtest.nls_param_11g lx, ggtest.nls_param_12c aix, nls_instance_parameters inst
+where aix.parameter=lx.parameter and lx.parameter=inst.parameter
+order by aix.parameter, aix.value;
+
+select aix.parameter, inst.value "INSTANCE", aix.value "12c-VALUE", lx.value "11g-VALUE"
+from ggtest.nls_param_11g lx full outer join ggtest.nls_param_12c aix on aix.parameter=lx.parameter
+  full outer join nls_instance_parameters inst on lx.parameter=inst.parameter
+order by aix.parameter, aix.value;
+PARAMETER                      INSTANCE                       12c-VALUE                      11g-VALUE
+------------------------------ ------------------------------ ------------------------------ ------------------------------
+NLS_CALENDAR                                                  GREGORIAN                      GREGORIAN
+NLS_CHARACTERSET                                              AL32UTF8                       AL32UTF8
+NLS_COMP                       BINARY                         BINARY                         BINARY
+NLS_CURRENCY                                                  $                              $
+NLS_DATE_FORMAT                MM/DD/YYYY                     MM/DD/YYYY                     DD-MON-RR
+NLS_DATE_LANGUAGE                                             AMERICAN                       AMERICAN
+NLS_DUAL_CURRENCY                                             $                              $
+NLS_ISO_CURRENCY                                              AMERICA                        AMERICA
+NLS_LANGUAGE                   AMERICAN                       AMERICAN                       AMERICAN
+NLS_LENGTH_SEMANTICS           BYTE                           BYTE                           BYTE
+NLS_NCHAR_CHARACTERSET                                        AL16UTF16                      UTF8
+NLS_NCHAR_CONV_EXCP            FALSE                          FALSE                          FALSE
+NLS_NUMERIC_CHARACTERS                                        .,                             .,
+NLS_RDBMS_VERSION                                             12.1.0.2.0                     11.2.0.4.0
+NLS_SORT                                                      BINARY                         BINARY
+NLS_TERRITORY                  AMERICA                        AMERICA                        AMERICA
+NLS_TIMESTAMP_FORMAT                                          DD-MON-RR HH.MI.SSXFF AM       DD-MON-RR HH.MI.SSXFF AM
+NLS_TIMESTAMP_TZ_FORMAT                                       DD-MON-RR HH.MI.SSXFF AM TZR   DD-MON-RR HH.MI.SSXFF AM TZR
+NLS_TIME_FORMAT                                               HH.MI.SSXFF AM                 HH.MI.SSXFF AM
+NLS_TIME_TZ_FORMAT                                            HH.MI.SSXFF AM TZR             HH.MI.SSXFF AM TZR
+
+select * from nls_instance_parameters
+where parameter in ('NLS_COMP','NLS_DATE_FORMAT','NLS_LANGUAGE','NLS_LENGTH_SEMANTICS','NLS_NCHAR_CONV_EXCP','NLS_TERRITORY')
+union
+select * from nls_database_parameters
+where parameter not in ('NLS_COMP','NLS_DATE_FORMAT','NLS_LANGUAGE','NLS_LENGTH_SEMANTICS','NLS_NCHAR_CONV_EXCP','NLS_TERRITORY')
+order by 1;
+PARAMETER                      VALUE
+------------------------------ ----------------------------------------
+NLS_CALENDAR                   GREGORIAN
+NLS_CHARACTERSET               AL32UTF8
+NLS_COMP                       BINARY
+NLS_CURRENCY                   $
+NLS_DATE_FORMAT                MM/DD/YYYY
+NLS_DATE_LANGUAGE              AMERICAN
+NLS_DUAL_CURRENCY              $
+NLS_ISO_CURRENCY               AMERICA
+NLS_LANGUAGE                   AMERICAN
+NLS_LENGTH_SEMANTICS           BYTE
+NLS_NCHAR_CHARACTERSET         UTF8
+NLS_NCHAR_CONV_EXCP            FALSE
+NLS_NUMERIC_CHARACTERS         .,
+NLS_RDBMS_VERSION              11.2.0.4.0
+NLS_SORT                       BINARY
+NLS_TERRITORY                  AMERICA
+NLS_TIMESTAMP_FORMAT           DD-MON-RR HH.MI.SSXFF AM
+NLS_TIMESTAMP_TZ_FORMAT        DD-MON-RR HH.MI.SSXFF AM TZR
+NLS_TIME_FORMAT                HH.MI.SSXFF AM
+NLS_TIME_TZ_FORMAT             HH.MI.SSXFF AM TZR
+
+
+*** ACLs ***
+
+ORA-46059: Invalid ACL identifier specified
+ORA-06512: at "SYS.DBMS_NETWORK_ACL_ADMIN", line 70
+ORA-06512: at "SYS.DBMS_NETWORK_ACL_ADMIN", line 218
+
+set lines 150 pages 200
+break on acl on host
+col acl format a40
+col host format a20
+col principal format a20
+col privilege format a20
+SELECT a.acl, a.host, a.lower_port, a.upper_port, b.principal, b.privilege,
+	b.is_grant --, b.start_date, b.end_date
+FROM   dba_network_acls a JOIN dba_network_acl_privileges b ON a.acl = b.acl
+ORDER BY a.acl, a.host, a.lower_port, a.upper_port, b.principal;
+no rows selected
+
+set serveroutput on
+BEGIN
+DBMS_NETWORK_ACL_ADMIN.create_acl (
+acl          => 'NETWORK_ACL_48B0D915A09B66DBE05311AF0B0ACE7B',
+description  => 'NETWORK_ACL_48B0D915A09B66DBE05311AF0B0ACE7B',
+principal    => 'GSMADMIN_INTERNAL',
+is_grant     => true,
+privilege    => 'resolve',
+start_date   => NULL,
+end_date     => NULL);
+COMMIT;
+END;
+/
+ORA-46059: Invalid ACL identifier specified
+ORA-06512: at "SYS.DBMS_NETWORK_ACL_ADMIN", line 70
+ORA-06512: at "SYS.DBMS_NETWORK_ACL_ADMIN", line 218
+
+select * from dba_users where username='GSMADMIN_INTERNAL';
+no rows selected
+
+BEGIN
+DBMS_NETWORK_ACL_ADMIN.create_acl (
+acl          => 'NETWORK_ACL',
+description  => 'NETWORK_ACL',
+principal    => 'GGTEST',
+is_grant     => true,
+privilege    => 'resolve',
+start_date   => NULL,
+end_date     => NULL);
+COMMIT;
+END;
+/
+
+BEGIN
+  DBMS_NETWORK_ACL_ADMIN.CREATE_ACL(
+     acl          => 'us-oracle-com-permissions.xml',
+     description  => 'Network permissions for *.us.oracle.com',
+     principal    => 'GGTEST',
+     is_grant     => TRUE,
+     privilege    => 'connect');
+END;
+/
+PL/SQL procedure successfully completed.
+
+BEGIN
+DBMS_NETWORK_ACL_ADMIN.create_acl (
+acl          => 'NETWORK_ACL_48B0D915A09B66DBE05311AF0B0ACE7B.xml',
+description  => 'NETWORK_ACL_48B0D915A09B66DBE05311AF0B0ACE7B.xml',
+principal    => 'GGTEST',
+is_grant     => true,
+privilege    => 'resolve',
+start_date   => NULL,
+end_date     => NULL);
+COMMIT;
+END;
+/
+ORA-44416: Invalid ACL: Unresolved principal 'GSMADMIN_INTERNAL'
+PL/SQL procedure successfully completed.
+
+	   
+select case
+	when lower(substr(a.acl,-4)) = '.xml' then a.acl
+	else a.acl||'.xml'
+	end "ACL"
+	
+SELECT case
+	     when lower(substr(a.acl,-4)) = '.xml' then a.acl
+	     else a.acl||'.xml'
+	   end "ACL",
+       a.host,
+       a.lower_port,
+       a.upper_port,
+       b.principal,
+       b.privilege,
+       b.is_grant,
+       b.start_date,
+       b.end_date
+FROM   dba_network_acls a
+       JOIN dba_network_acl_privileges b ON a.acl = b.acl
+--WHERE b.principal!='GSMADMIN_INTERNAL'
+ORDER BY a.acl, a.host, a.lower_port, a.upper_port;
+
+
+############# Export/Import LOBs #####################
+
+-- DataPump Export/Import Of LOBs Are Not Executed in Parallel (Doc ID 1467662.1)
+create table table2 (......) as select /*+ parallel (table1, 4) */ * from table1@dblink to source DB;
+
+-- idevp (SB)
+OWNER                                LOBS
+------------------------------ ----------
+CONFLUENCE                             27
+CRUCIBLE                               11
+GGTEST                                  4
+IDEVUSER                               15
+JIRA                                   29
+SONAR                                  12
+The LOB sizes are 1121.5 MB
+
+select '\\"'||owner||'\\".\\"'||table_name||'\\"' "STMT"
+	from dba_tables where owner not in 
+('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS')
+order by owner, table_name;
+
+select owner||'.'||table_name from dba_lobs 
+where owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS','GGTEST')
+order by owner, table_name;
+
+spool /tmp/idevp_lob_tables.txt
+select lob.owner||'.'||lob.table_name, seg.segment_type, (seg.bytes/1024/1024) "MB"
+from dba_segments seg join dba_lobs lob on seg.segment_name=lob.segment_name and seg.owner=lob.owner
+where seg.owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS','GGTEST')
+order by seg.bytes;
+
+select table_name from dba_lobs where owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS','GGTEST')
+order by table_name;
+('ACTIVE_RULE_NOTES','AO_21D670_WHITELIST_RULES','AO_4AEACD_WEBHOOK_DAO','AO_563AEE_ACTIVITY_ENTITY','AO_60DB71_AUDITENTRY','AO_92D5D5_USER_NOTIFICATION','AO_9412A1_AONOTIFICATION','AO_9412A1_AOREGISTRATION','AO_9412A1_AOTASK','AO_9412A1_AOUSER','AO_A0B856_WEB_HOOK_LISTENER_AO','AO_E8B6CC_CHANGESET_MAPPING','AO_E8B6CC_ISSUE_MAPPING_V2','AO_E8B6CC_REPOSITORY_MAPPING','AO_FB71B4_SSH_PUBLIC_KEY','ATTACHMENTDATA','BANDANA','BODYCONTENT','CHANGEITEM','CONTENT','CUSTOMFIELDVALUE','DECORATOR','ENTITY_PROPERTY','GADGETUSERPREFERENCE','GRAPHS','ISSUE_CHANGES','ISSUE_FILTERS','JIRAACTION','JIRADRAFTWORKFLOWS','JIRAISSUE','JIRAWORKFLOWS','KEYSTORE','MEASURE_DATA','MEASURE_FILTERS','NOTIFICATIONS','OS_PROPERTYENTRY','PAGETEMPLATES','PLUGINDATA','PLUGIN_SETTING','PROFILE_STGTAB','PROPERTIES','PROPERTYTEXT','REPLICATEDINDEXOPERATION','RULES','RULE_NOTES','SEARCHREQUEST','SNAPSHOT_DATA','SNAPSHOT_SOURCES','SPACEGROUPS','STA_COMMENT','STA_PULL_REQUEST','STA_SHARED_LOB','STA_TASK','STGTAB_BASELINE','USERHISTORYITEM','WORKLOG')
+
+select distinct 'TABLEEXCLUDE "'||owner||'"."'||table_name||'";' from dba_tables 
+where owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS','GGTEST')
+and table_name in ('ACTIVE_RULE_NOTES','AO_21D670_WHITELIST_RULES','AO_4AEACD_WEBHOOK_DAO','AO_563AEE_ACTIVITY_ENTITY','AO_60DB71_AUDITENTRY','AO_92D5D5_USER_NOTIFICATION','AO_9412A1_AONOTIFICATION','AO_9412A1_AOREGISTRATION','AO_9412A1_AOTASK','AO_9412A1_AOUSER','AO_A0B856_WEB_HOOK_LISTENER_AO','AO_E8B6CC_CHANGESET_MAPPING','AO_E8B6CC_ISSUE_MAPPING_V2','AO_E8B6CC_REPOSITORY_MAPPING','AO_FB71B4_SSH_PUBLIC_KEY','ATTACHMENTDATA','BANDANA','BODYCONTENT','CHANGEITEM','CONTENT','CUSTOMFIELDVALUE','DECORATOR','ENTITY_PROPERTY','GADGETUSERPREFERENCE','GRAPHS','ISSUE_CHANGES','ISSUE_FILTERS','JIRAACTION','JIRADRAFTWORKFLOWS','JIRAISSUE','JIRAWORKFLOWS','KEYSTORE','MEASURE_DATA','MEASURE_FILTERS','NOTIFICATIONS','OS_PROPERTYENTRY','PAGETEMPLATES','PLUGINDATA','PLUGIN_SETTING','PROFILE_STGTAB','PROPERTIES','PROPERTYTEXT','REPLICATEDINDEXOPERATION','RULES','RULE_NOTES','SEARCHREQUEST','SNAPSHOT_DATA','SNAPSHOT_SOURCES','SPACEGROUPS','STA_COMMENT','STA_PULL_REQUEST','STA_SHARED_LOB','STA_TASK','STGTAB_BASELINE','USERHISTORYITEM','WORKLOG')
+order by 1;
+
+select distinct 'MAPEXCLUDE "'||owner||'"."'||table_name||'";' from dba_tables 
+where owner not in ('GGS','ANONYMOUS','APEX_030200','APEX_040200','APPQOSSYS','AUDSYS','AUTODDL','CTXSYS','DB_BACKUP','DBAQUEST','DBSNMP','DMSYS','DVF','DVSYS','EXFSYS','FLOWS_FILES','GSMADMIN_INTERNAL','INSIGHT','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','OUTLN','RMAN','SI_INFORMTN_SCHEMA','SYS','SYSTEM','WMSYS','XDB','XS$NULL','DIP','ORACLE_OCM','ORDPLUGINS','OPS$ORACLE','UIMMONITOR','AUTODML','ORA_QUALYS_DB','APEX_PUBLIC_USER','GSMCATUSER','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SYSBACKUP','SYSDG','SYSKM','SYSMAN','MGMT_USER','MGMT_VIEW','OWB$CLIENT','OWBSYS','TRCANLZR','GSMUSER','MDDATA','PDBADMIN','OWBSYS_AUDIT','TSMSYS','GGTEST')
+and table_name in ('ACTIVE_RULE_NOTES','AO_21D670_WHITELIST_RULES','AO_4AEACD_WEBHOOK_DAO','AO_563AEE_ACTIVITY_ENTITY','AO_60DB71_AUDITENTRY','AO_92D5D5_USER_NOTIFICATION','AO_9412A1_AONOTIFICATION','AO_9412A1_AOREGISTRATION','AO_9412A1_AOTASK','AO_9412A1_AOUSER','AO_A0B856_WEB_HOOK_LISTENER_AO','AO_E8B6CC_CHANGESET_MAPPING','AO_E8B6CC_ISSUE_MAPPING_V2','AO_E8B6CC_REPOSITORY_MAPPING','AO_FB71B4_SSH_PUBLIC_KEY','ATTACHMENTDATA','BANDANA','BODYCONTENT','CHANGEITEM','CONTENT','CUSTOMFIELDVALUE','DECORATOR','ENTITY_PROPERTY','GADGETUSERPREFERENCE','GRAPHS','ISSUE_CHANGES','ISSUE_FILTERS','JIRAACTION','JIRADRAFTWORKFLOWS','JIRAISSUE','JIRAWORKFLOWS','KEYSTORE','MEASURE_DATA','MEASURE_FILTERS','NOTIFICATIONS','OS_PROPERTYENTRY','PAGETEMPLATES','PLUGINDATA','PLUGIN_SETTING','PROFILE_STGTAB','PROPERTIES','PROPERTYTEXT','REPLICATEDINDEXOPERATION','RULES','RULE_NOTES','SEARCHREQUEST','SNAPSHOT_DATA','SNAPSHOT_SOURCES','SPACEGROUPS','STA_COMMENT','STA_PULL_REQUEST','STA_SHARED_LOB','STA_TASK','STGTAB_BASELINE','USERHISTORYITEM','WORKLOG')
+order by 1;
+
+-- export
+select LTRIM(TO_CHAR(current_scn)) current_scn from v$database;
+10956951823375
+
+expdp \"/ as sysdba\" flashback_scn=10956951823375 parfile=/backup_uxs33/dpdump/datapump/idevp/expdp_idevp.par
+expdp \"/ as sysdba\" parfile=/backup_uxs33/dpdump/datapump/idevp/expdp_metadata_idevp.par
+
+cd /move/idevp01/scripts
+vi current_scn_AIX_idevp.out
+tar -cvf Linux_setup_idevp.tar *idevp* RIDEVP1.prm
+scp Linux_setup_idevp.tar lxora12cinfs02:/tmp
+
+-- 2nd GG extract
+cp /backup_uxs33/ggate/12.2/dirprm/EIDEVP1.prm /backup_uxs33/ggate/12.2/dirprm/EIDEVP2.prm
+cp /backup_uxs33/ggate/12.2/dirprm/PIDEVP1.prm /backup_uxs33/ggate/12.2/dirprm/PIDEVP2.prm
+
+vi /backup_uxs33/ggate/12.2/dirprm/EIDEVP2.prm
+Change:
+	extract name
+	discard file
+	ExtTrail file
+	TABLEEXCLUDE to TABLE
+	remove normal tables & sequences
+	change heartbeat table to GGS_HEARTBEAT2
+
+vi /backup_uxs33/ggate/12.2/dirprm/PIDEVP2.prm
+Change:
+	extract name
+	trail file location
+	remove sequences
+	change heartbeat table to ggs_heartbeat2
+	
+mkdir /backup_uxs33/ggate/12.2/dirdat/idevp2
+
+cd /backup_uxs33/ggate/12.2
+DBLOGIN USERID GGS@IDEVP PASSWORD This1works
+add extract EIDEVP2, integrated tranlog, begin now
+add exttrail /backup_uxs33/ggate/12.2/dirdat/idevp2/ea, extract EIDEVP2, megabytes 1000
+add extract PIDEVP2, exttrailsource /backup_uxs33/ggate/12.2/dirdat/idevp2/ea
+add rmttrail /oragg/12.2/dirdat/idevp2/ra, extract PIDEVP2, megabytes 1000
+register extract EIDEVP2 database
+2018-10-23 11:40:18  INFO    OGG-02003  Extract EIDEVP2 successfully registered with database at SCN 10956951835835.
+
+start EIDEVP2
+start PIDEVP2
+
+-- lxora12cinfs02
+mkdir /oragg/12.2/dirdat/idevp2
+
+sqlplus ggs@idevp
+create public database link get_lob
+using '(DESCRIPTION = (ADDRESS_LIST = (ADDRESS= (COMMUNITY = tcp.world) (PROTOCOL = TCP)(HOST = uxs33.conseco.com)(PORT = 1521))) (CONNECT_DATA = (SID = idevp)))';
+select sysdate from dual@get_lob;
+
+create table SONAR.ACTIVE_RULE_NOTES as select /*+ parallel (SONAR.ACTIVE_RULE_NOTES, 4) */ * from SONAR.ACTIVE_RULE_NOTES@get_lob;
+Table created.
+
+select count(*) from CONFLUENCE.BODYCONTENT ;
+10270
+select count(*) from SONAR.MEASURE_DATA     ;
+137566
+select count(*) from SONAR.SNAPSHOT_SOURCES ;
+57372
+
+create table CONFLUENCE.BODYCONTENT as select /*+ parallel (CONFLUENCE.BODYCONTENT, 4) */ * from CONFLUENCE.BODYCONTENT@get_lob;
+
+set timing on
+create table SONAR.MEASURE_DATA as select /*+ parallel (SONAR.MEASURE_DATA, 4) */ * from SONAR.MEASURE_DATA@get_lob;
+Elapsed: 00:18:01.96
+
+create table SONAR.SNAPSHOT_SOURCES as select /*+ parallel (SONAR.SNAPSHOT_SOURCES, 4) */ * from SONAR.SNAPSHOT_SOURCES@get_lob;
+Elapsed: 00:09:42.36
+
+set numf 999999999999990
+select CURRENT_SCN from v$database@get_lob;
+create table CONFLUENCE.PLUGINDATA as select /*+ parallel (CONFLUENCE.PLUGINDATA, 4) */ * from CONFLUENCE.PLUGINDATA@get_lob;
+Elapsed: 00:00:01.16
+
+CONFLUENCE.BANDANA
+SONAR.SNAPSHOT_DATA
+
+
+
+
+CONFLUENCE.BODYCONTENT
+SONAR.MEASURE_DATA
+SONAR.SNAPSHOT_SOURCES
+
+
+############# Network Export/Import #####################
+
+-- From Kuhn DBA book
+-- From target DB:
+create database link dk…
+create or replace directory engdev as …
+
+impdp … directory=engdev network_link=dk schemas=… parallel=4
+
+
+-- lxorainfs02
+Linux_build_no_import_encrypt.sh
+idevp
+
+-- ggs
+create database link dp_import_dbl
+connect to ggs identified by This1Works
+using '(DESCRIPTION = (ADDRESS_LIST = (ADDRESS = (COMMUNITY = tcp.world) (PROTOCOL = TCP)(HOST = uxs33)(PORT = 1521))) (CONNECT_DATA = (SID = idevp)))';
+
+set numf 999999999999990
+select current_scn from v$database@dp_import_dbl;
+10956953620692
+
+vi /database/Ecidevp/cidevp_admn01/scripts/impdp_idevp.par
+DIRECTORY=CNO_MIGRATE
+LOGFILE=impdp_idevp.log
+NETWORK_LINK=dp_import_dbl
+FLASHBACK_SCN=10956953620692
+SCHEMAS=GGTEST,SONAR,JIRA,CONFLUENCE,CRUCIBLE,IDEVUSER,SQLGUARD,AWR_USER,TNS_USER,ECORA,IDMUNX,INF_MM,COG6T6,KDPTXD,COGGAU,CDPK2F,COGSPV,COG71S,CNOZK7,COGZX6,CNOXGO,COGY0L,COGQ5C,COGOTA,CDPTM2,SQLTUNE
+TABLE_EXISTS_ACTION=REPLACE
+PARALLEL=8
+CLUSTER=Y
+METRICS=Y
+LOGTIME=ALL
+
+$ORACLE_HOME/bin/impdp \"ggs@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=lxora12cinfs02.conseco.ad)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=idevp)))\" parfile=/database/Ecidevp/cidevp_admn01/scripts/impdp_idevp.par
